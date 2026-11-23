@@ -1,0 +1,35 @@
+.labels-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.labels-toolbar label{margin:0}
+.labels-toolbar select{width:auto;min-width:145px}
+.labels-toolbar .sub{flex-basis:100%;margin:0}
+.labels-toolbar #label-message{flex-basis:100%;font-size:13px;color:#4264a2}
+.labels-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:15px}
+.qr-label{background:white;border:1px solid #d8e1ed;border-radius:10px;padding:10px;min-width:0}
+.qr-label[hidden]{display:none}
+.label-check{display:flex;gap:8px;align-items:center;font-size:12px;color:#64758e;cursor:pointer}
+.label-check input{min-height:0;width:auto}
+.qr-label-body{display:flex;align-items:center;gap:9px;margin-top:8px;min-height:150px}
+.qr-graphic{width:128px;height:128px;flex:0 0 128px}
+.qr-graphic img,.qr-graphic canvas{max-width:100%;display:block}
+.qr-meta{display:flex;flex-direction:column;gap:7px;min-width:0;overflow-wrap:anywhere}
+.qr-meta small{color:#586783}
+.qr-meta strong{font-size:14px;line-height:1.25}
+.qr-meta code{font-size:13px;font-weight:bold}
+@page{size:A4;margin:10mm}
+@media print{
+ header,.headline,.labels-toolbar,.label-check{display:none!important}
+ body,main{background:white!important;padding:0!important;margin:0!important;max-width:none!important}
+ .labels-grid{display:grid!important;grid-template-columns:repeat(3,60mm)!important;gap:3mm!important;align-items:start}
+ .labels-grid.wide-labels{grid-template-columns:repeat(2,70mm)!important}
+ .qr-label,.qr-label[hidden]{display:none!important}
+ .qr-label.print-item{display:block!important;box-sizing:border-box!important;width:60mm;height:40mm;border:0.25mm dashed #aaa;border-radius:0;padding:2mm;break-inside:avoid;page-break-inside:avoid;overflow:hidden}
+ .wide-labels .qr-label.print-item{width:70mm;height:50mm}
+ .qr-label-body{margin:0;min-height:0;height:100%;gap:2mm}
+ .qr-graphic{width:29mm;height:29mm;flex:0 0 29mm}
+ .wide-labels .qr-graphic{width:36mm;height:36mm;flex-basis:36mm}
+ .qr-graphic img,.qr-graphic canvas{width:100%!important;height:100%!important}
+ .qr-meta{gap:1mm}
+ .qr-meta strong{font-size:9pt}
+ .qr-meta small{font-size:7pt}
+ .qr-meta code{font-size:9pt}
+}

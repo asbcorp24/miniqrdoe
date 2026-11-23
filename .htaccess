@@ -2,7 +2,7 @@ Options -Indexes
 RewriteEngine On
 
 # Keep private project files and the SQLite database inaccessible over HTTP.
-RewriteRule ^(?:src|var)(?:/|$) - [F,END,NC]
+RewriteRule ^(?:src|var|tools)(?:/|$) - [F,END,NC]
 RewriteRule ^(?:\.git(?:/|$)|\.gitignore$|README\.md$) - [F,END,NC]
 
 # These rules work both at the domain root and under a prefix such as /qrq/.

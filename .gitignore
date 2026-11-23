@@ -2,3 +2,5 @@
 /var/*.sqlite-wal
 /var/*.sqlite-shm
 /var/*.db
+
+/var/admin_password.hash

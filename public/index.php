@@ -1,15 +1,20 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/app.php';
+require dirname(__DIR__).'/src/admin_auth.php';
 session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off']);
 session_start();
 $error='';$success=$_SESSION['success']??'';unset($_SESSION['success']);
 try {
  db();
+ $requestedPage=(string)($_GET['page']??'work');
+ if (in_array($requestedPage,['groups','directory','reports'],true) || ($_GET['action']??'')==='csv') admin_require();
  if(($_GET['action']??'')==='csv')exportCsv();
  if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!hash_equals(token(),(string)($_POST['csrf']??'')))throw new DomainException('Сессия устарела: перезагрузите страницу');
-  perform((string)($_POST['action']??''));
+  $requestedAction=(string)($_POST['action']??'');
+  if (in_array($requestedAction,['machine','worker','group'],true)) admin_require();
+  perform($requestedAction);
   $_SESSION['success']='Изменения сохранены';
   $target=in_array($_POST['back']??'',['work','groups','directory'],true)?$_POST['back']:'work';
   header('Location: ?page='.$target,true,303);exit;
@@ -24,7 +29,7 @@ $active=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entr
 $entries=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entries e JOIN machines m ON m.id=e.machine_id JOIN workers w ON w.id=e.worker_id JOIN part_groups g ON g.id=e.group_id ORDER BY e.id DESC LIMIT 70");
 $csrf=token();
 ?><!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#172442"><title>MiniQRDOE — Маршрутные карты</title><link rel="stylesheet" href="assets/style.css"></head><body>
-<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a><a href="labels.php">QR-этикетки</a></nav></header>
+<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><?php if(admin_logged_in()):?><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a><?php endif;?><?php if(admin_logged_in()):?><a href="labels.php">QR-этикетки</a><a href="index.php?page=groups">Админка</a><form method="post" action="logout.php" class="logout-inline"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><button type="submit">Выход</button></form><?php else:?><a href="login.php">Админка</a><?php endif;?></nav></header>
 <main>
 <?php if($error):?><div class="notice error"><?=h($error)?></div><?php endif;?>
 <?php if($success):?><div class="notice ok"><?=h($success)?></div><?php endif;?>
@@ -44,7 +49,7 @@ $csrf=token();
 <?php elseif($page==='directory'):?>
 <div class="headline"><div><small>СПРАВОЧНИКИ</small><h1>Станки и работники</h1><p>На наклейке QR должен быть уникальный код соответствующей записи.</p></div></div>
 <div class="columns">
-<?php foreach([['machine','Станки',$machines],['worker','Работники',$workers]] as [$kind,$title,$items]):?><section class="card"><h2><?=$title?></h2><form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="<?=$kind?>"><input type="hidden" name="back" value="directory"><label>Название / ФИО</label><input name="name" required maxlength="180"><label>Код, записанный в QR</label><input name="code" required maxlength="120" placeholder="QR-001"><button class="primary full">+ Добавить</button></form><h3>Список</h3><?php foreach($items as $i):?><div class="item"><b><?=h($i['name'])?></b><code><?=h($i['code'])?></code></div><?php endforeach;?></section><?php endforeach;?></div>
+<?php foreach([['machine','Станки',$machines],['worker','Работники',$workers]] as [$kind,$title,$items]):?><section class="card"><h2><?=$title?></h2><form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="<?=$kind?>"><input type="hidden" name="back" value="directory"><label>Название / ФИО</label><input name="name" required maxlength="180"><p class="sub">Уникальный QR-код создаётся автоматически после сохранения. Вводить код не нужно.</p><button class="primary full">+ Добавить</button></form><h3>Список</h3><?php foreach($items as $i):?><div class="item"><b><?=h($i['name'])?></b><code><?=h($i['code'])?></code></div><?php endforeach;?></section><?php endforeach;?></div>
 <?php elseif($page==='reports'):
 try {[$from,$to,$start,$end]=period();}catch(DomainException $e){$from=date('Y-m-01');$to=date('Y-m-d');$start=$from.' 00:00:00';$end=date('Y-m-d',strtotime($to.' +1 day')).' 00:00:00';}
 $params=[$start,$end];

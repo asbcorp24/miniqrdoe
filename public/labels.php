@@ -23,7 +23,7 @@ foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QR-этикетки — MiniQRDOE</title>
 <link rel="stylesheet" href="assets/style.css"><link rel="stylesheet" href="assets/labels.css">
-<script src="assets/qrcode.min.js" defer></script><script src="assets/labels.js" defer></script>
+<script src="assets/qrcode.min.js" defer></script><script src="assets/labels.js?v=6" defer></script>
 </head><body>
 <header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Печать QR-этикеток</small></span></div>
 <nav><a href="index.php?page=work">Работа</a><a href="index.php?page=groups">Группы</a><a href="index.php?page=directory">Справочники</a><a href="index.php?page=reports">Аналитика</a><a class="on" href="labels.php">QR-этикетки</a></nav></header>

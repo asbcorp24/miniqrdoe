@@ -53,7 +53,7 @@
  let scanTimer;
  function clearScan(){scanBuffer='';scanCount=0;scanStart=0;scanPrevious=0;clearTimeout(scanTimer);}
  function usePayload(raw){
-  const match=/^([MWG]):([A-Za-z0-9_-]{1,120})$/i.exec(raw.trim());
+  const match=/^([MWG])[:>]([A-Za-z0-9_-]{1,120})$/i.exec(raw.trim());
   const banner=document.getElementById('usb-scan-status');
   if(!match){if(banner)banner.textContent='Неверный QR: '+raw;return;}
   const kind=match[1].toUpperCase(),id=match[2];
@@ -68,11 +68,11 @@
  document.addEventListener('keydown',event=>{
   if(!modal.hidden||event.ctrlKey||event.altKey||event.metaKey||event.isComposing){clearScan();return;}
   const node=event.target;
-  if(node instanceof HTMLElement&&(node.matches('input,textarea,select')||node.isContentEditable)){clearScan();return;}
+  if(node instanceof HTMLElement&&(node.matches('textarea,input[type="password"],input[type="text"],input[type="search"]')||node.isContentEditable)){clearScan();return;}
   const now=performance.now();
-  if(now-scanPrevious>100)clearScan();
+  if(now-scanPrevious>350)clearScan();
   if(event.key==='Enter'){
-   if(scanCount>=5&&now-scanStart<=Math.max(500,scanCount*85)&&/^[MWG]:[A-Za-z0-9_-]{1,120}$/i.test(scanBuffer)){
+   if(scanCount>=5&&now-scanStart<=Math.max(1200,scanCount*250)&&/^[MWG][:>][A-Za-z0-9_-]{1,120}$/i.test(scanBuffer)){
     event.preventDefault();usePayload(scanBuffer);
    }
    clearScan();return;
@@ -81,6 +81,6 @@
   if(!scanCount)scanStart=now;
   scanBuffer+=event.key;scanCount++;scanPrevious=now;
   if(scanCount>150){clearScan();return;}
-  clearTimeout(scanTimer);scanTimer=setTimeout(clearScan,140);
+  clearTimeout(scanTimer);scanTimer=setTimeout(clearScan,450);
  },true);
 })();

@@ -24,7 +24,7 @@ $active=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entr
 $entries=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entries e JOIN machines m ON m.id=e.machine_id JOIN workers w ON w.id=e.worker_id JOIN part_groups g ON g.id=e.group_id ORDER BY e.id DESC LIMIT 70");
 $csrf=token();
 ?><!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#172442"><title>MiniQRDOE — Маршрутные карты</title><link rel="stylesheet" href="assets/style.css"></head><body>
-<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a></nav></header>
+<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a><a href="labels.php">QR-этикетки</a></nav></header>
 <main>
 <?php if($error):?><div class="notice error"><?=h($error)?></div><?php endif;?>
 <?php if($success):?><div class="notice ok"><?=h($success)?></div><?php endif;?>

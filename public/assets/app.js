@@ -2,6 +2,53 @@
  const modal=document.getElementById('scanner-modal');
  const video=document.getElementById('scanner-video');
  const status=document.getElementById('scanner-status');
+ const finishModal=document.getElementById('finish-modal');
+ const finishStatus=document.getElementById('finish-status');
+ const finishCode=document.getElementById('finish-worker-code');
+ const finishConfirm=document.getElementById('confirm-finish');
+ let expectedFinishCode='';
+ function finishMessage(message){
+  if(finishStatus)finishStatus.textContent=message;
+  if(!modal.hidden&&target==='finish-worker')status.textContent=message;
+ }
+ function verifyFinishWorker(raw){
+  if(!finishModal||finishModal.hidden)return;
+  const code=String(raw).trim();
+  finishCode.value='';
+  finishConfirm.disabled=true;
+  if(!/^2[0-9]{11}$/.test(code)){
+   finishMessage('Нужен цифровой QR-код работника (12 цифр, начинается с 2).');
+   return;
+  }
+  if(code!==expectedFinishCode){
+   finishMessage('Это другой работник. Отсканируйте QR-код того, кто начал работу.');
+   return;
+  }
+  finishCode.value=code;
+  finishConfirm.disabled=false;
+  finishMessage('✓ Работник подтверждён. Нажмите «Завершить».');
+  if(!modal.hidden&&target==='finish-worker')stop();
+ }
+ function closeFinish(){
+  if(!finishModal)return;
+  finishModal.hidden=true;
+  expectedFinishCode='';
+  finishCode.value='';
+  finishConfirm.disabled=true;
+  if(!modal.hidden&&target==='finish-worker')stop();
+  clearScan();
+ }
+ function openFinish(button){
+  expectedFinishCode=button.dataset.finishWorkerCode||'';
+  document.getElementById('finish-entry-id').value=button.dataset.finishEntry||'';
+  document.getElementById('finish-worker-name').textContent=button.dataset.finishWorkerName||'';
+  finishCode.value='';
+  finishConfirm.disabled=true;
+  finishStatus.textContent='Ожидаю QR-код работника через USB-сканер или камеру.';
+  finishModal.hidden=false;
+  finishModal.querySelector('.modal-body')?.focus();
+  clearScan();
+ }
  let stream=null,active=false,detector=null,target='',last=0;
  function stop(){
   active=false;
@@ -10,6 +57,7 @@
   modal.hidden=true;
  }
  function found(code){
+  if(target==='finish-worker'){verifyFinishWorker(code);return;}
   const select=document.getElementById(target);
   const option=Array.from(select.options).find(o=>o.dataset.code===String(code).trim());
   if(!option){status.textContent='Код '+code+' отсутствует в справочнике';return;}
@@ -44,9 +92,15 @@
   }
  }
  document.querySelectorAll('[data-target]').forEach(b=>b.addEventListener('click',()=>start(b.dataset.target)));
+ document.querySelectorAll('[data-finish-entry]').forEach(b=>b.addEventListener('click',()=>openFinish(b)));
+ document.getElementById('cancel-finish')?.addEventListener('click',closeFinish);
+ finishModal?.addEventListener('click',e=>{if(e.target===finishModal)closeFinish();});
+ document.getElementById('finish-form')?.addEventListener('submit',e=>{
+  if(!finishCode.value||finishCode.value!==expectedFinishCode){e.preventDefault();finishMessage('Сначала отсканируйте QR-код работника.');}
+ });
  document.getElementById('close-scanner')?.addEventListener('click',stop);
  modal?.addEventListener('click',e=>{if(e.target===modal)stop();});
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)stop();});
+ document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modal.hidden)stop();else if(finishModal&&!finishModal.hidden)closeFinish();});
 
  // USB HID scanner: receives a fast QR payload followed by Enter.
  let scanBuffer='', scanPrevious=0, scanStart=0, scanCount=0;
@@ -54,9 +108,15 @@
  function clearScan(){scanBuffer='';scanCount=0;scanStart=0;scanPrevious=0;clearTimeout(scanTimer);}
  function usePayload(raw){
   const match=/^([123])([0-9]{11})$/.exec(raw.trim());
-  const banner=document.getElementById('usb-scan-status');
-  if(!match){if(banner)banner.textContent='Неверный QR: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;return;}
+  const banner=finishModal&&!finishModal.hidden?finishStatus:document.getElementById('usb-scan-status');
+  if(!match){
+   const message='Неверный QR: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;
+   if(finishModal&&!finishModal.hidden)finishMessage(message);
+   else if(banner)banner.textContent=message;
+   return;
+  }
   const kind=match[1],code=match[0];
+  if(finishModal&&!finishModal.hidden){verifyFinishWorker(code);return;}
   const select=document.getElementById(({'1':'machine','2':'worker','3':'group'})[kind]);
   if(!select){if(banner)banner.textContent='Откройте вкладку «Работа»';return;}
   const option=[...select.options].find(o=>o.dataset.code===code);
@@ -66,7 +126,7 @@
   if(banner)banner.textContent='✓ '+raw+' — '+option.textContent.trim();
  }
  document.addEventListener('keydown',event=>{
-  if(!modal.hidden||event.ctrlKey||event.altKey||event.metaKey||event.isComposing){clearScan();return;}
+  if((!modal.hidden&&target!=='finish-worker')||event.ctrlKey||event.altKey||event.metaKey||event.isComposing){clearScan();return;}
   const node=event.target;
   if(node instanceof HTMLElement&&(node.matches('textarea,input[type="password"],input[type="text"],input[type="search"]')||node.isContentEditable)){clearScan();return;}
   const now=performance.now();

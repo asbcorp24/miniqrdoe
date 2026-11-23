@@ -12,15 +12,13 @@ try {
     http_response_code(503);
     exit('Ошибка загрузки справочников. Проверьте доступ к SQLite.');
 }
-function qrCode(string $kind, string $value): string {
-    $value = trim($value);
-    if (preg_match('/^[MWG]:/i', $value)) $value = substr($value, 2);
-    return $kind.':'.$value;
+function groupQrCode(int $id): string {
+    return '3'.str_pad((string)$id,11,'0',STR_PAD_LEFT);
 }
 $labels = [];
-foreach ($machines as $m) $labels[] = ['type'=>'machine', 'type_name'=>'Станок', 'name'=>$m['name'], 'code'=>qrCode('M',$m['code'])];
-foreach ($workers as $w) $labels[] = ['type'=>'worker', 'type_name'=>'Работник', 'name'=>$w['name'], 'code'=>qrCode('W',$w['code'])];
-foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа деталей', 'name'=>$g['name'], 'code'=>'G:'.$g['id'], 'note'=>$g['status']==='closed'?'Закрыта':'Открыта'];
+foreach ($machines as $m) $labels[] = ['type'=>'machine', 'type_name'=>'Станок', 'name'=>$m['name'], 'code'=>$m['code']];
+foreach ($workers as $w) $labels[] = ['type'=>'worker', 'type_name'=>'Работник', 'name'=>$w['name'], 'code'=>$w['code']];
+foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа деталей', 'name'=>$g['name'], 'code'=>groupQrCode((int)$g['id']), 'note'=>$g['status']==='closed'?'Закрыта':'Открыта'];
 ?><!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QR-этикетки — MiniQRDOE</title>
@@ -29,7 +27,7 @@ foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа
 </head><body>
 <header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Печать QR-этикеток</small></span></div>
 <nav><a href="index.php?page=work">Работа</a><a href="index.php?page=groups">Группы</a><a href="index.php?page=directory">Справочники</a><a href="index.php?page=reports">Аналитика</a><a class="on" href="labels.php">QR-этикетки</a></nav></header>
-<main><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>QR-этикетки</h1><p>Локальный генератор QR для USB-сканера. Форматы M:, W: и G:.</p></div></div>
+<main><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>QR-этикетки</h1><p>Локальный генератор QR для USB-сканера. Только цифры: 1 — станок, 2 — работник, 3 — группа деталей.</p></div></div>
 <section class="card labels-toolbar"><label for="label-type">Что печатать</label>
 <select id="label-type"><option value="all">Все этикетки</option><option value="machine">Станки</option><option value="worker">Работники</option><option value="group">Группы деталей</option></select>
 <label for="label-size">Размер наклейки</label><select id="label-size"><option value="60">60 × 40 мм</option><option value="70">70 × 50 мм</option></select>

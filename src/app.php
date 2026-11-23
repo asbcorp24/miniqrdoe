@@ -46,11 +46,22 @@ function dateField(string $key,bool $optional=false): ?string {
  if(!$d||$d->format('Y-m-d\TH:i')!==$s)throw new DomainException('Неверная дата');
  return $d->format('Y-m-d H:i:s');
 }
+function generate_qr_code(PDO $pdo, string $table, string $prefix): string {
+ // Server-side CSPRNG; do not trust a browser-supplied identifier.
+ for ($attempt=0; $attempt<10; $attempt++) {
+  $code=$prefix.':'.strtoupper(bin2hex(random_bytes(6)));
+  $stmt=$pdo->prepare("SELECT 1 FROM $table WHERE code=? LIMIT 1");
+  $stmt->execute([$code]);
+  if (!$stmt->fetchColumn()) return $code;
+ }
+ throw new RuntimeException('Не удалось сгенерировать уникальный QR-код');
+}
 function perform(string $action): void {
  $pdo=db();
  if(in_array($action,['machine','worker'],true)){
   $table=$action==='machine'?'machines':'workers';
-  $pdo->prepare("INSERT INTO $table(name,code) VALUES(?,?)")->execute([required('name'),required('code')]);return;
+  $prefix=$action==='machine'?'M':'W';
+  $pdo->prepare("INSERT INTO $table(name,code) VALUES(?,?)")->execute([required('name'),generate_qr_code($pdo,$table,$prefix)]);return;
  }
  if($action==='group'){
   $pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([required('name'),dateField('received_at'),dateField('planned_at',true),positive('quantity')]);return;

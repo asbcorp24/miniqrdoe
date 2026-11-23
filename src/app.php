@@ -92,10 +92,14 @@ function perform(string $action): void {
   }catch(Throwable $e){$pdo->rollBack();throw $e;}
  }
  if($action==='finish'){
-  $id=positive('entry_id');$pdo->exec('BEGIN IMMEDIATE');
+  $id=positive('entry_id');
+  $workerCode=trim((string)($_POST['worker_code']??''));
+  if(!preg_match('/^2[0-9]{11}$/D',$workerCode))throw new DomainException('Для завершения отсканируйте QR-код работника');
+  $pdo->exec('BEGIN IMMEDIATE');
   try {
-   $entry=first('SELECT * FROM work_entries WHERE id=?',[$id]);
+   $entry=first('SELECT e.*,w.code worker_code FROM work_entries e JOIN workers w ON w.id=e.worker_id WHERE e.id=?',[$id]);
    if(!$entry||$entry['status']!=='active')throw new DomainException('Работа уже закрыта');
+   if(!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
    $pdo->prepare("UPDATE work_entries SET status='done',ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'")->execute([$id]);
    $s=$pdo->prepare("UPDATE part_groups SET completed=completed+1 WHERE id=? AND status='open' AND completed<quantity");
    $s->execute([$entry['group_id']]);

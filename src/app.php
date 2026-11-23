@@ -31,6 +31,17 @@ CREATE INDEX IF NOT EXISTS idx_work_worker ON work_entries(worker_id,status);
 CREATE INDEX IF NOT EXISTS idx_work_machine ON work_entries(machine_id,started_at);
 CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 SQL);
+ // Convert stored legacy labels to numeric-only QR values without touching record IDs.
+ // The old printed QR labels must be replaced after this one-time migration.
+ foreach (['machines'=>'1','workers'=>'2'] as $table=>$prefix) {
+  $rows=$pdo->query("SELECT id,code FROM $table")->fetchAll();
+  $update=$pdo->prepare("UPDATE $table SET code=? WHERE id=?");
+  foreach ($rows as $row) {
+   if (preg_match('/^'.$prefix.'[0-9]{11}$/D',(string)$row['code'])) continue;
+   $code=generate_qr_code($pdo,$table,$prefix);
+   $update->execute([$code,(int)$row['id']]);
+  }
+ }
  return $pdo;
 }
 function h(mixed $x): string {return htmlspecialchars((string)$x,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
@@ -49,7 +60,7 @@ function dateField(string $key,bool $optional=false): ?string {
 function generate_qr_code(PDO $pdo, string $table, string $prefix): string {
  // Server-side CSPRNG; do not trust a browser-supplied identifier.
  for ($attempt=0; $attempt<10; $attempt++) {
-  $code=$prefix.':'.strtoupper(bin2hex(random_bytes(6)));
+  $code=$prefix.str_pad((string)random_int(0,99999999999),11,'0',STR_PAD_LEFT);
   $stmt=$pdo->prepare("SELECT 1 FROM $table WHERE code=? LIMIT 1");
   $stmt->execute([$code]);
   if (!$stmt->fetchColumn()) return $code;
@@ -60,7 +71,7 @@ function perform(string $action): void {
  $pdo=db();
  if(in_array($action,['machine','worker'],true)){
   $table=$action==='machine'?'machines':'workers';
-  $prefix=$action==='machine'?'M':'W';
+  $prefix=$action==='machine'?'1':'2';
   $pdo->prepare("INSERT INTO $table(name,code) VALUES(?,?)")->execute([required('name'),generate_qr_code($pdo,$table,$prefix)]);return;
  }
  if($action==='group'){

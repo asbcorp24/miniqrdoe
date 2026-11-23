@@ -53,13 +53,13 @@
  let scanTimer;
  function clearScan(){scanBuffer='';scanCount=0;scanStart=0;scanPrevious=0;clearTimeout(scanTimer);}
  function usePayload(raw){
-  const match=/^([MWG])[:>]([A-Za-z0-9_-]{1,120})$/i.exec(raw.trim());
+  const match=/^([123])([0-9]{11})$/.exec(raw.trim());
   const banner=document.getElementById('usb-scan-status');
-  if(!match){if(banner)banner.textContent='Неверный QR: '+raw;return;}
-  const kind=match[1].toUpperCase(),id=match[2];
-  const select=document.getElementById(({M:'machine',W:'worker',G:'group'})[kind]);
+  if(!match){if(banner)banner.textContent='Неверный QR: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;return;}
+  const kind=match[1],code=match[0];
+  const select=document.getElementById(({'1':'machine','2':'worker','3':'group'})[kind]);
   if(!select){if(banner)banner.textContent='Откройте вкладку «Работа»';return;}
-  const option=[...select.options].find(o=>kind==='G'?o.value===id:(o.dataset.code===kind+':'+id||o.dataset.code===id));
+  const option=[...select.options].find(o=>o.dataset.code===code);
   if(!option){if(banner)banner.textContent='Код '+raw+' отсутствует среди доступных записей';return;}
   select.value=option.value;
   select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -72,7 +72,7 @@
   const now=performance.now();
   if(now-scanPrevious>350)clearScan();
   if(event.key==='Enter'){
-   if(scanCount>=5&&now-scanStart<=Math.max(1200,scanCount*250)&&/^[MWG][:>][A-Za-z0-9_-]{1,120}$/i.test(scanBuffer)){
+   if(scanCount>=5&&now-scanStart<=Math.max(1200,scanCount*250)){
     event.preventDefault();usePayload(scanBuffer);
    }
    clearScan();return;

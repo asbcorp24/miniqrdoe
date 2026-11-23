@@ -19,7 +19,7 @@
   for (const node of labels) {
     const payload = node.dataset.payload || '';
     try {
-      if (!/^[MWG]:[A-Za-z0-9_-]{1,120}$/i.test(payload)) throw new Error('Некорректный код');
+      if (!/^[123][0-9]{11}$/.test(payload)) throw new Error('Некорректный код');
       new QRCode(node.querySelector('.qr-graphic'), {
         text: payload, width: 128, height: 128,
         colorDark: '#000000', colorLight: '#ffffff',

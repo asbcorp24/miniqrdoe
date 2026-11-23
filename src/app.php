@@ -74,6 +74,35 @@ function perform(string $action): void {
   $prefix=$action==='machine'?'1':'2';
   $pdo->prepare("INSERT INTO $table(name,code) VALUES(?,?)")->execute([required('name'),generate_qr_code($pdo,$table,$prefix)]);return;
  }
+ if(in_array($action,['directory_delete','directory_restore'],true)){
+  $kind=(string)($_POST['kind']??'');
+  if(!in_array($kind,['machine','worker'],true))throw new DomainException('Неизвестный тип справочника');
+  $table=$kind==='machine'?'machines':'workers';
+  $column=$kind==='machine'?'machine_id':'worker_id';
+  $title=$kind==='machine'?'Станок':'Работник';
+  $id=positive('record_id');
+  $pdo->exec('BEGIN IMMEDIATE');
+  try {
+   $record=first("SELECT id,active FROM $table WHERE id=?",[$id]);
+   if(!$record)throw new DomainException('Запись не найдена');
+   if($action==='directory_restore'){
+    $pdo->prepare("UPDATE $table SET active=1 WHERE id=?")->execute([$id]);
+    $_SESSION['success']=$title.' восстановлен в справочнике';
+   }else{
+    if(!(int)$record['active'])throw new DomainException('Запись уже находится в архиве');
+    if(first("SELECT id FROM work_entries WHERE $column=? AND status='active' LIMIT 1",[$id]))
+     throw new DomainException('Нельзя удалить запись, пока по ней есть незавершённая работа');
+    if(first("SELECT id FROM work_entries WHERE $column=? LIMIT 1",[$id])){
+     $pdo->prepare("UPDATE $table SET active=0 WHERE id=?")->execute([$id]);
+     $_SESSION['success']=$title.' перенесён в архив — история операций сохранена';
+    }else{
+     $pdo->prepare("DELETE FROM $table WHERE id=?")->execute([$id]);
+     $_SESSION['success']=$title.' удалён из справочника';
+    }
+   }
+   $pdo->commit();return;
+  }catch(Throwable $e){$pdo->rollBack();throw $e;}
+ }
  if($action==='group'){
   $pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([required('name'),dateField('received_at'),dateField('planned_at',true),positive('quantity')]);return;
  }

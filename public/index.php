@@ -13,9 +13,9 @@ try {
  if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!hash_equals(token(),(string)($_POST['csrf']??'')))throw new DomainException('Сессия устарела: перезагрузите страницу');
   $requestedAction=(string)($_POST['action']??'');
-  if (in_array($requestedAction,['machine','worker','group'],true)) admin_require();
+  if (in_array($requestedAction,['machine','worker','group','directory_delete','directory_restore'],true)) admin_require();
   perform($requestedAction);
-  $_SESSION['success']='Изменения сохранены';
+  $_SESSION['success']=$_SESSION['success']??'Изменения сохранены';
   $target=in_array($_POST['back']??'',['work','groups','directory'],true)?$_POST['back']:'work';
   header('Location: ?page='.$target,true,303);exit;
  }
@@ -24,6 +24,8 @@ $page=(string)($_GET['page']??'work');
 if(!in_array($page,['work','groups','directory','reports'],true))$page='work';
 $machines=query('SELECT * FROM machines WHERE active=1 ORDER BY name');
 $workers=query('SELECT * FROM workers WHERE active=1 ORDER BY name');
+$archivedMachines=$page==='directory'?query('SELECT * FROM machines WHERE active=0 ORDER BY name'):[];
+$archivedWorkers=$page==='directory'?query('SELECT * FROM workers WHERE active=0 ORDER BY name'):[];
 $groups=query('SELECT * FROM part_groups ORDER BY id DESC LIMIT 1000');
 $active=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entries e JOIN machines m ON m.id=e.machine_id JOIN workers w ON w.id=e.worker_id JOIN part_groups g ON g.id=e.group_id WHERE e.status='active' ORDER BY e.id DESC");
 $entries=query("SELECT e.*,m.name machine,w.name worker,g.name grp FROM work_entries e JOIN machines m ON m.id=e.machine_id JOIN workers w ON w.id=e.worker_id JOIN part_groups g ON g.id=e.group_id ORDER BY e.id DESC LIMIT 70");
@@ -47,9 +49,27 @@ $csrf=token();
 <div class="columns"><section class="card"><h2>Создать группу</h2><form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="group"><input type="hidden" name="back" value="groups"><label>Название / номер группы</label><input name="name" required maxlength="180" placeholder="Заказ 104-А"><label>Время приёма</label><input type="datetime-local" name="received_at" required value="<?=date('Y-m-d\TH:i')?>"><label>Плановое время изготовления</label><input type="datetime-local" name="planned_at"><label>Количество деталей</label><input type="number" min="1" name="quantity" required><button class="primary full">+ Создать группу</button></form></section><section class="card"><h2>Состояние производства</h2><div class="metrics"><div><b><?=count(array_filter($groups,fn($g)=>$g['status']==='open'))?></b><span>Открытых групп</span></div><div><b><?=count(array_filter($groups,fn($g)=>$g['status']==='closed'))?></b><span>Закрытых групп</span></div></div><p class="sub">Номер детали назначается в начале работы. Счётчик готовых увеличивается только при завершении.</p></section></div>
 <section class="card"><h2>Все группы</h2><div class="tablewrap"><table><thead><tr><th>ID</th><th>Название</th><th>Приём</th><th>План</th><th>Готово</th><th>Статус</th></tr></thead><tbody><?php foreach($groups as $g):?><tr><td><?=$g['id']?></td><td><?=h($g['name'])?></td><td><?=h($g['received_at'])?></td><td><?=h($g['planned_at']??'—')?></td><td><div class="bar"><i style="width:<?=100*$g['completed']/$g['quantity']?>%"></i></div><?=$g['completed']?> / <?=$g['quantity']?></td><td><span class="chip <?= $g['status']==='closed'?'green':'' ?>"><?= $g['status']==='closed'?'Закрыта':'Открыта' ?></span></td></tr><?php endforeach;?></tbody></table></div></section>
 <?php elseif($page==='directory'):?>
-<div class="headline"><div><small>СПРАВОЧНИКИ</small><h1>Станки и работники</h1><p>На наклейке QR должен быть уникальный код соответствующей записи.</p></div></div>
+<div class="headline"><div><small>СПРАВОЧНИКИ</small><h1>Станки и работники</h1><p>Удаление доступно администратору. Записи с историей операций переходят в архив.</p></div></div>
 <div class="columns">
-<?php foreach([['machine','Станки',$machines],['worker','Работники',$workers]] as [$kind,$title,$items]):?><section class="card"><h2><?=$title?></h2><form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="<?=$kind?>"><input type="hidden" name="back" value="directory"><label>Название / ФИО</label><input name="name" required maxlength="180"><p class="sub">Уникальный QR-код создаётся автоматически после сохранения. Вводить код не нужно.</p><button class="primary full">+ Добавить</button></form><h3>Список</h3><?php foreach($items as $i):?><div class="item"><b><?=h($i['name'])?></b><code><?=h($i['code'])?></code></div><?php endforeach;?></section><?php endforeach;?></div>
+<?php foreach([['machine','Станки',$machines,$archivedMachines],['worker','Работники',$workers,$archivedWorkers]] as [$kind,$title,$items,$archived]):?>
+<section class="card"><h2><?=$title?></h2>
+<form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="<?=$kind?>"><input type="hidden" name="back" value="directory">
+<label>Название / ФИО</label><input name="name" required maxlength="180"><p class="sub">Уникальный QR-код создаётся автоматически после сохранения.</p><button class="primary full">+ Добавить</button></form>
+<h3>Список</h3>
+<?php if(!$items):?><p class="sub">Активных записей нет.</p><?php endif;?>
+<?php foreach($items as $i):?>
+<div class="item directory-item"><div class="directory-details"><b><?=h($i['name'])?></b><code><?=h($i['code'])?></code></div>
+<form method="post" class="directory-action" onsubmit="return confirm('Удалить запись? Если она использовалась, она будет перенесена в архив.');">
+<input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="directory_delete"><input type="hidden" name="back" value="directory"><input type="hidden" name="kind" value="<?=$kind?>"><input type="hidden" name="record_id" value="<?=(int)$i['id']?>">
+<button type="submit" class="danger">Удалить</button></form></div>
+<?php endforeach;?>
+<?php if($archived):?><details class="archive-list"><summary>Архив (<?=count($archived)?>)</summary>
+<?php foreach($archived as $i):?>
+<div class="item directory-item archived"><div class="directory-details"><b><?=h($i['name'])?></b><code><?=h($i['code'])?></code></div>
+<form method="post" class="directory-action"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="directory_restore"><input type="hidden" name="back" value="directory"><input type="hidden" name="kind" value="<?=$kind?>"><input type="hidden" name="record_id" value="<?=(int)$i['id']?>">
+<button type="submit" class="scan">Восстановить</button></form></div>
+<?php endforeach;?></details><?php endif;?>
+</section><?php endforeach;?></div>
 <?php elseif($page==='reports'):
 try {[$from,$to,$start,$end]=period();}catch(DomainException $e){$from=date('Y-m-01');$to=date('Y-m-d');$start=$from.' 00:00:00';$end=date('Y-m-d',strtotime($to.' +1 day')).' 00:00:00';}
 $params=[$start,$end];

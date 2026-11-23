@@ -1,6 +1,13 @@
 Options -Indexes
 RewriteEngine On
-RewriteRule ^(src|var)(/|$) - [F,L,NC]
-RewriteRule ^(\.git|\.gitignore|README\.md) - [F,L,NC]
-RewriteCond %{REQUEST_URI} !^/public/
-RewriteRule ^(.*)$ public/$1 [L]
+
+# Keep private project files and the SQLite database inaccessible over HTTP.
+RewriteRule ^(?:src|var)(?:/|$) - [F,END,NC]
+RewriteRule ^(?:\.git(?:/|$)|\.gitignore$|README\.md$) - [F,END,NC]
+
+# These rules work both at the domain root and under a prefix such as /qrq/.
+# END stops mod_rewrite from processing the internally rewritten /public/ URI
+# again (REQUEST_URI is not reliable as a guard for subdirectory installs).
+RewriteRule ^public/ - [END]
+RewriteRule ^$ public/index.php [END]
+RewriteRule ^(.+)$ public/$1 [END]

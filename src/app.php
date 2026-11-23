@@ -147,7 +147,7 @@ function period(): array {
 }
 function exportCsv(): never {
  [$a,$b,$from,$to]=period();
- $data=query("SELECT e.id,m.name machine,w.name worker,g.name group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status FROM work_entries e JOIN machines m ON m.id=e.machine_id JOIN workers w ON w.id=e.worker_id JOIN part_groups g ON g.id=e.group_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
+ $data=query("SELECT e.id,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
  header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="miniqrdoe.csv"');
  $f=fopen('php://output','wb');fwrite($f,"\xEF\xBB\xBF");
  fputcsv($f,['ID','Станок','Работник','Группа','Номер детали','Начало UTC','Окончание UTC','Секунды','Статус'],';');

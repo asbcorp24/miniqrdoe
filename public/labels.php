@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/app.php';
+require dirname(__DIR__).'/src/admin_auth.php';
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+admin_require();
 try {
     $machines = query('SELECT id,name,code FROM machines WHERE active=1 ORDER BY name');
     $workers = query('SELECT id,name,code FROM workers WHERE active=1 ORDER BY name');

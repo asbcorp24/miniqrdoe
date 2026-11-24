@@ -100,8 +100,8 @@ function perform(string $action): void {
      $_SESSION['success']=$title.' удалён из справочника';
     }
    }
-   $pdo->commit();return;
-  }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   $pdo->exec('COMMIT');return;
+  }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
  if($action==='group'){
   $pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([required('name'),dateField('received_at'),dateField('planned_at',true),positive('quantity')]);return;
@@ -117,8 +117,8 @@ function perform(string $action): void {
    $n=(int)(first('SELECT MAX(part_number) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
    if($n>(int)$g['quantity'])throw new DomainException('Все номера деталей заняты');
    $pdo->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at) VALUES(?,?,?,?,datetime('now'))")->execute([$machine,$worker,$group,$n]);
-   $pdo->commit();return;
-  }catch(Throwable $e){$pdo->rollBack();throw $e;}
+   $pdo->exec('COMMIT');return;
+  }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
  if($action==='finish'){
   $id=positive('entry_id');
@@ -142,10 +142,10 @@ function perform(string $action): void {
    if(!$saved||$saved['status']!=='done')
     throw new DomainException('Операция исчезла при завершении. Изменения отменены; проверьте триггеры SQLite.');
    $database=first('PRAGMA database_list');
-   $pdo->commit();
+   $pdo->exec('COMMIT');
    $_SESSION['finish_check']=['id'=>$id,'db_file'=>(string)($database['file']??'')];
    return;
-  }catch(Throwable $e){$pdo->rollBack();throw $e;}
+  }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
  throw new DomainException('Недопустимое действие');
 }

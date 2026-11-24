@@ -46,7 +46,7 @@ $entriesTotal=(int)(first('SELECT COUNT(*) total FROM work_entries')['total']??0
 $entries=query("SELECT e.*,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) grp FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id ORDER BY e.id DESC LIMIT 70");
 $csrf=token();
 ?><!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#172442"><title>MiniQRDOE — Маршрутные карты</title><link rel="stylesheet" href="assets/style.css"><link rel="stylesheet" href="assets/finish.css?v=1"></head><body>
-<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><?php if(admin_logged_in()):?><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a><?php endif;?><?php if(admin_logged_in()):?><a href="labels.php">QR-этикетки</a><a href="index.php?page=groups">Админка</a><form method="post" action="logout.php" class="logout-inline"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><button type="submit">Выход</button></form><?php else:?><a href="login.php">Админка</a><?php endif;?></nav></header>
+<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Маршрутные карты</small></span></div><nav><a href="?page=work" <?= $page==='work'?'class="on"':'' ?>>Работа</a><?php if(admin_logged_in()):?><a href="?page=groups" <?= $page==='groups'?'class="on"':'' ?>>Группы</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=directory" <?= $page==='directory'?'class="on"':'' ?>>Справочники</a><?php endif;?><?php if(admin_logged_in()):?><a href="?page=reports" <?= $page==='reports'?'class="on"':'' ?>>Аналитика</a><?php endif;?><?php if(admin_logged_in()):?><a href="labels.php">Этикетки</a><a href="index.php?page=groups">Админка</a><form method="post" action="logout.php" class="logout-inline"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><button type="submit">Выход</button></form><?php else:?><a href="login.php">Админка</a><?php endif;?></nav></header>
 <main>
 <?php if($error):?><div class="notice error"><?=h($error)?></div><?php endif;?>
 <?php if($success):?><div class="notice ok"><?=h($success)?></div><?php endif;?>
@@ -69,7 +69,7 @@ $csrf=token();
 <?php foreach([['machine','Станки',$machines,$archivedMachines],['worker','Работники',$workers,$archivedWorkers]] as [$kind,$title,$items,$archived]):?>
 <section class="card"><h2><?=$title?></h2>
 <form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="<?=$kind?>"><input type="hidden" name="back" value="directory">
-<label>Название / ФИО</label><input name="name" required maxlength="180"><p class="sub">Уникальный QR-код создаётся автоматически после сохранения.</p><button class="primary full">+ Добавить</button></form>
+<label>Название / ФИО</label><input name="name" required maxlength="180"><p class="sub">Уникальный код создаётся автоматически после сохранения.</p><button class="primary full">+ Добавить</button></form>
 <h3>Список</h3>
 <?php if(!$items):?><p class="sub">Активных записей нет.</p><?php endif;?>
 <?php foreach($items as $i):?>
@@ -102,11 +102,11 @@ $days=query("SELECT substr(started_at,1,10) day,COUNT(*) total,COALESCE(SUM(stat
 <?php endif;?></main>
 <div id="finish-modal" class="modal" hidden><div class="modal-body finish-dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="finish-title">
 <h2 id="finish-title">Подтвердить завершение работы</h2>
-<p>Отсканируйте QR-код <strong>того же работника</strong>, который начал операцию:</p>
+<p>Отсканируйте код <strong>того же работника</strong>, который начал операцию:</p>
 <div class="finish-identity"><span>Работник</span><strong id="finish-worker-name"></strong></div>
-<p id="finish-status" role="status" aria-live="polite">Ожидаю QR-код работника через USB-сканер или камеру.</p>
+<p id="finish-status" role="status" aria-live="polite">Ожидаю код работника через USB-сканер или камеру.</p>
 <form method="post" id="finish-form"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="finish"><input type="hidden" name="back" value="work"><input type="hidden" name="entry_id" id="finish-entry-id"><input type="hidden" name="worker_code" id="finish-worker-code">
-<div class="finish-actions"><button type="button" class="scan" data-target="finish-worker">▣ Камера QR</button><button type="button" class="scan" id="cancel-finish">Отмена</button><button type="submit" class="finish" id="confirm-finish" disabled>✓ Завершить</button></div>
+<div class="finish-actions"><button type="button" class="scan" data-target="finish-worker">▣ Камера</button><button type="button" class="scan" id="cancel-finish">Отмена</button><button type="submit" class="finish" id="confirm-finish" disabled>✓ Завершить</button></div>
 </form></div></div>
 <div id="scanner-modal" class="modal" hidden><div class="modal-body"><div class="item"><h2>Сканировать QR</h2><button class="scan" id="close-scanner">Закрыть</button></div><video id="scanner-video" autoplay playsinline muted></video><p id="scanner-status"></p><p class="sub">Для камеры нужен HTTPS или localhost. Если сканер не поддерживается, выберите запись вручную.</p></div></div>
-<script src="assets/app.js?v=7" defer></script></body></html>
+<script src="assets/app.js?v=8" defer></script></body></html>

@@ -108,6 +108,7 @@ function perform(string $action): void {
    $pdo->exec('COMMIT');return;
   }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
+ if($action==='route_archive'){route_archive($pdo);return;}
  if($action==='route_create'){route_create($pdo);return;}
  if($action==='group'){
   if(!empty($_POST['route_id'])){route_group($pdo);return;}

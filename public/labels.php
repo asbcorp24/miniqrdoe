@@ -19,7 +19,11 @@ $labels = [];
 foreach ($machines as $m) $labels[] = ['type'=>'machine', 'type_name'=>'Станок', 'name'=>$m['name'], 'code'=>$m['code']];
 foreach ($workers as $w) $labels[] = ['type'=>'worker', 'type_name'=>'Работник', 'name'=>$w['name'], 'code'=>$w['code']];
 foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа деталей', 'name'=>$g['name'], 'code'=>groupQrCode((int)$g['id']), 'note'=>$g['status']==='closed'?'Закрыта':'Открыта'];
-if(isset($_GET['group_id'])){
+foreach(query('SELECT s.id,s.name,g.name group_name FROM group_steps s JOIN part_groups g ON g.id=s.group_id WHERE g.status=\'open\' ORDER BY g.id,s.position') as $s)$labels[]=['type'=>'container','type_name'=>'Контейнер этапа','name'=>$s['group_name'].' / '.$s['name'],'code'=>'4'.str_pad((string)$s['id'],11,'0',STR_PAD_LEFT)];
+if(isset($_GET['step_id'])){
+ $id=filter_var($_GET['step_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+ $labels=array_values(array_filter($labels,fn($item)=>$id!==false && $item['type']==='container' && $item['code']==='4'.str_pad((string)$id,11,'0',STR_PAD_LEFT)));
+}elseif(isset($_GET['group_id'])){
  $id=filter_var($_GET['group_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
  $labels=array_values(array_filter($labels,fn($item)=>$id!==false && $item['type']==='group' && $item['code']===groupQrCode($id)));
 }
@@ -31,9 +35,9 @@ if(isset($_GET['group_id'])){
 </head><body>
 <header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Печать этикеток</small></span></div>
 <nav><a href="index.php?page=work">Работа</a><a href="index.php?page=groups">Группы</a><a href="index.php?page=directory">Справочники</a><a href="index.php?page=reports">Аналитика</a><a class="on" href="labels.php">Этикетки</a></nav></header>
-<main><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>Этикетки</h1><p>Локальный генератор Code 128 и QR для USB-сканера. Только цифры: 1 — станок, 2 — работник, 3 — группа деталей.</p></div></div>
+<main><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>Этикетки</h1><p>Локальный генератор Code 128 и QR для USB-сканера. Только цифры: 1 — станок, 2 — работник, 3 — группа деталей, 4 — контейнер этапа.</p></div></div>
 <section class="card labels-toolbar"><label for="label-type">Что печатать</label>
-<select id="label-type"><option value="all">Все этикетки</option><option value="machine">Станки</option><option value="worker">Работники</option><option value="group">Группы деталей</option></select>
+<select id="label-type"><option value="all">Все этикетки</option><option value="machine">Станки</option><option value="worker">Работники</option><option value="group">Группы деталей</option><option value="container">Контейнеры этапов</option></select>
 <label for="label-format">Тип кода</label><select id="label-format"><option value="barcode">Code 128</option><option value="qr">QR</option><option value="both">Оба</option></select><label for="paper-mode">Бумага</label><select id="paper-mode"><option value="a4">A4</option><option value="thermal">Термопринтер</option></select><label for="label-size">Размер наклейки</label><select id="label-size"><option value="40">40 × 20 мм</option><option value="50">50 × 30 мм</option><option value="58">58 × 40 мм</option><option value="60" selected>60 × 40 мм</option><option value="70">70 × 50 мм</option></select>
 <button type="button" class="scan" id="select-all-labels">Выбрать все</button>
 <button type="button" class="scan" id="clear-all-labels">Снять выбор</button>

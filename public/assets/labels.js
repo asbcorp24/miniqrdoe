@@ -23,7 +23,7 @@
   for (const node of labels) {
     const payload = node.dataset.payload || '';
     try {
-      if (!/^[123][0-9]{11}$/.test(payload)) throw new Error('Некорректный код');
+      if (!/^[1234][0-9]{11}$/.test(payload)) throw new Error('Некорректный код');
       node.querySelector('.barcode-graphic').append(Code128.render(payload));
       new QRCode(node.querySelector('.qr-graphic'), {
         text: payload, width: 128, height: 128,

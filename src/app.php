@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/routes.php';
 function db(): PDO {
  static $pdo;
  if(isset($pdo)) return $pdo;
@@ -34,6 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 SQL);
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
  foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
+ route_schema($pdo);
  // Convert stored legacy labels to numeric-only QR values without touching record IDs.
  // The old printed QR labels must be replaced after this one-time migration.
  foreach (['machines'=>'1','workers'=>'2'] as $table=>$prefix) {
@@ -106,7 +108,9 @@ function perform(string $action): void {
    $pdo->exec('COMMIT');return;
   }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
+ if($action==='route_create'){route_create($pdo);return;}
  if($action==='group'){
+  if(!empty($_POST['route_id'])){route_group($pdo);return;}
   $pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([required('name'),dateField('received_at'),dateField('planned_at',true),positive('quantity')]);return;
  }
  if($action==='start'){
@@ -120,6 +124,7 @@ function perform(string $action): void {
    if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');
    $n=(int)(first('SELECT MAX(part_number) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
+   if(route_steps($group)){route_start($pdo,$group,$machine,$worker,$n);$pdo->exec('COMMIT');return;}
    $reserved=(int)first("SELECT COUNT(*) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n'];
    if((int)$g['completed']+$reserved >= (int)$g['quantity'])throw new DomainException('Все оставшиеся детали уже в работе');
    $rework=(int)($_POST['rework_of']??0);
@@ -137,6 +142,7 @@ function perform(string $action): void {
    $entry=first('SELECT e.*,w.code worker_code FROM work_entries e JOIN workers w ON w.id=e.worker_id WHERE e.id=?',[$id]);
    if(!$entry||$entry['status']!=='active')throw new DomainException('Работа уже закрыта');
    if(!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
+   if(route_finish($pdo,$entry)){$pdo->exec('COMMIT');return;}
    $quality=(string)($_POST['quality_result']??'good');
    if(!in_array($quality,['good','scrap','rework'],true))throw new DomainException('Неизвестный результат');
    $reason=$quality==='good'?null:required('quality_reason');
@@ -171,10 +177,10 @@ function period(): array {
 }
 function exportCsv(): never {
  [$a,$b,$from,$to]=period();
- $data=query("SELECT e.id,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status,e.quality_result,e.quality_reason,e.rework_of FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
+ $data=query("SELECT e.id,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status,e.quality_result,e.quality_reason,e.rework_of,rs.name route_step,ro.quantity,ro.good,ro.scrap,ro.rework FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id LEFT JOIN route_operations ro ON ro.entry_id=e.id LEFT JOIN group_steps rs ON rs.id=ro.step_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
  header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="miniqrdoe.csv"');
  $f=fopen('php://output','wb');fwrite($f,"\xEF\xBB\xBF");
- fputcsv($f,['ID','Станок','Работник','Группа','Номер детали','Начало UTC','Окончание UTC','Секунды','Статус','Результат','Причина','Доработка операции'],';');
+ fputcsv($f,['ID','Станок','Работник','Группа','Номер детали','Начало UTC','Окончание UTC','Секунды','Статус','Результат','Причина','Доработка операции','Этап','Количество','Годные','Брак','Доработка'],';');
  foreach($data as $r)fputcsv($f,array_values($r),';');
  fclose($f);exit;
 }

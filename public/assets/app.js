@@ -61,6 +61,7 @@
   const select=document.getElementById(target);
   const option=Array.from(select.options).find(o=>o.dataset.code===String(code).trim());
   if(!option){status.textContent='Код '+code+' отсутствует в справочнике';return;}
+  if(option.disabled){status.textContent='Станок занят. Сначала завершите предыдущую работу.';return;}
   select.value=option.value;
   select.dispatchEvent(new Event('change',{bubbles:true}));
   stop();
@@ -124,6 +125,7 @@
   if(!select){if(banner)banner.textContent='Откройте вкладку «Работа»';return;}
   const option=[...select.options].find(o=>o.dataset.code===code);
   if(!option){if(banner)banner.textContent='Код '+raw+' отсутствует среди доступных записей';return;}
+  if(option.disabled){select.value='';if(banner)banner.textContent='Станок занят. Сначала завершите предыдущую работу.';return;}
   select.value=option.value;
   select.dispatchEvent(new Event('change',{bubbles:true}));
   if(banner)banner.textContent='✓ '+raw+' — '+option.textContent.trim();

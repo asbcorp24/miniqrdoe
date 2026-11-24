@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS work_entries(
 );
 CREATE INDEX IF NOT EXISTS idx_work_group ON work_entries(group_id,status);
 CREATE INDEX IF NOT EXISTS idx_work_worker ON work_entries(worker_id,status);
+CREATE INDEX IF NOT EXISTS idx_work_machine_status ON work_entries(machine_id,status);
 CREATE INDEX IF NOT EXISTS idx_work_machine ON work_entries(machine_id,started_at);
 CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 SQL);
@@ -111,6 +112,8 @@ function perform(string $action): void {
   $pdo->exec('BEGIN IMMEDIATE');
   try {
    if(!first('SELECT id FROM machines WHERE id=? AND active=1',[$machine])||!first('SELECT id FROM workers WHERE id=? AND active=1',[$worker])) throw new DomainException('Неизвестный станок или работник');
+   $busy=first("SELECT e.id,w.name worker FROM work_entries e LEFT JOIN workers w ON w.id=e.worker_id WHERE e.machine_id=? AND e.status='active' LIMIT 1",[$machine]);
+   if($busy)throw new DomainException('Станок уже в работе (операция №'.$busy['id'].', работник: '.($busy['worker']??'неизвестен').'). Сначала завершите предыдущую операцию.');
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);
    if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');

@@ -17,11 +17,11 @@
   finishCode.value='';
   finishConfirm.disabled=true;
   if(!/^2[0-9]{11}$/.test(code)){
-   finishMessage('Нужен цифровой QR-код работника (12 цифр, начинается с 2).');
+   finishMessage('Нужен цифровой код работника (12 цифр, начинается с 2).');
    return;
   }
   if(code!==expectedFinishCode){
-   finishMessage('Это другой работник. Отсканируйте QR-код того, кто начал работу.');
+   finishMessage('Это другой работник. Отсканируйте код того, кто начал работу.');
    return;
   }
   finishCode.value=code;
@@ -44,7 +44,7 @@
   document.getElementById('finish-worker-name').textContent=button.dataset.finishWorkerName||'';
   finishCode.value='';
   finishConfirm.disabled=true;
-  finishStatus.textContent='Ожидаю QR-код работника через USB-сканер или камеру.';
+  finishStatus.textContent='Ожидаю код работника через USB-сканер или камеру.';
   finishModal.hidden=false;
   finishModal.querySelector('.modal-body')?.focus();
   clearScan();
@@ -79,13 +79,16 @@
  async function start(which){
   target=which;modal.hidden=false;status.textContent='Подключаем камеру...';
   if(!navigator.mediaDevices?.getUserMedia){status.textContent='Для камеры откройте сайт по HTTPS (или localhost).';return;}
-  if(!('BarcodeDetector'in window)){status.textContent='Браузер не поддерживает QR-сканер. Выберите станок или работника вручную.';return;}
+  if(!('BarcodeDetector'in window)){status.textContent='Браузер не поддерживает сканер. Выберите станок или работника вручную.';return;}
   try{
-   detector=new BarcodeDetector({formats:['qr_code']});
+   const supported=await BarcodeDetector.getSupportedFormats();
+   const formats=['qr_code','code_128'].filter(f=>supported.includes(f));
+   if(!formats.length)throw Error('Нет поддержки QR или Code 128');
+   detector=new BarcodeDetector({formats});
    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});
    video.srcObject=stream;
    await video.play();
-   active=true;status.textContent='Наведите камеру на QR-код';requestAnimationFrame(loop);
+   active=true;status.textContent='Наведите камеру на код';requestAnimationFrame(loop);
   }catch(e){
    if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
    status.textContent='Камера недоступна: '+e.message;
@@ -96,7 +99,7 @@
  document.getElementById('cancel-finish')?.addEventListener('click',closeFinish);
  finishModal?.addEventListener('click',e=>{if(e.target===finishModal)closeFinish();});
  document.getElementById('finish-form')?.addEventListener('submit',e=>{
-  if(!finishCode.value||finishCode.value!==expectedFinishCode){e.preventDefault();finishMessage('Сначала отсканируйте QR-код работника.');}
+  if(!finishCode.value||finishCode.value!==expectedFinishCode){e.preventDefault();finishMessage('Сначала отсканируйте код работника.');}
  });
  document.getElementById('close-scanner')?.addEventListener('click',stop);
  modal?.addEventListener('click',e=>{if(e.target===modal)stop();});
@@ -110,7 +113,7 @@
   const match=/^([123])([0-9]{11})$/.exec(raw.trim());
   const banner=finishModal&&!finishModal.hidden?finishStatus:document.getElementById('usb-scan-status');
   if(!match){
-   const message='Неверный QR: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;
+   const message='Неверный код: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;
    if(finishModal&&!finishModal.hidden)finishMessage(message);
    else if(banner)banner.textContent=message;
    return;

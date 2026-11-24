@@ -58,8 +58,19 @@
   video.srcObject=null;
   modal.hidden=true;
  }
+ function containerScan(code,banner){
+ const data=JSON.parse(document.getElementById('route-data')?.textContent||'{}'),group=document.getElementById('group'),step=document.getElementById('route-step');
+ if(!group||!step){if(banner)banner.textContent='Откройте вкладку Работа';return false;}
+ for(const [id,steps] of Object.entries(data)){const s=steps.find(s=>'4'+String(s.id).padStart(11,'0')===code);if(!s)continue;
+ group.value=id;group.dispatchEvent(new Event('change',{bubbles:true}));
+ const option=[...step.options].find(o=>o.value===String(s.id)&&!o.disabled);
+ if(!option){if(banner)banner.textContent='Выберите подходящий станок и проверьте остаток этапа';return false;}
+ step.value=option.value;step.dispatchEvent(new Event('change',{bubbles:true}));if(banner)banner.textContent='✓ '+s.name;return true;}
+ if(banner)banner.textContent='Контейнер не найден среди открытых групп';return false;
+ }
  function found(code){
   if(target==='finish-worker'){verifyFinishWorker(code);return;}
+  if(target==='group'&&/^4[0-9]{11}$/.test(String(code).trim())){if(containerScan(String(code).trim(),status))stop();return;}
   const select=document.getElementById(target);
   const option=Array.from(select.options).find(o=>o.dataset.code===String(code).trim());
   if(!option){status.textContent='Код '+code+' отсутствует в справочнике';return;}
@@ -118,16 +129,17 @@
  let scanTimer;
  function clearScan(){scanBuffer='';scanCount=0;scanStart=0;scanPrevious=0;clearTimeout(scanTimer);}
  function usePayload(raw){
-  const match=/^([123])([0-9]{11})$/.exec(raw.trim());
+  const match=/^([1234])([0-9]{11})$/.exec(raw.trim());
   const banner=finishModal&&!finishModal.hidden?finishStatus:document.getElementById('usb-scan-status');
   if(!match){
-   const message='Неверный код: нужен цифровой код из 12 цифр (1/2/3 + 11 цифр). Получено: '+raw;
+   const message='Неверный код: нужен цифровой код из 12 цифр (1/2/3/4 + 11 цифр). Получено: '+raw;
    if(finishModal&&!finishModal.hidden)finishMessage(message);
    else if(banner)banner.textContent=message;
    return;
   }
   const kind=match[1],code=match[0];
   if(finishModal&&!finishModal.hidden){verifyFinishWorker(code);return;}
+  if(kind==='4'){containerScan(code,banner);return;}
   const select=document.getElementById(({'1':'machine','2':'worker','3':'group'})[kind]);
   if(!select){if(banner)banner.textContent='Откройте вкладку «Работа»';return;}
   const option=[...select.options].find(o=>o.dataset.code===code);

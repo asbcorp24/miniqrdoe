@@ -19,6 +19,10 @@ $labels = [];
 foreach ($machines as $m) $labels[] = ['type'=>'machine', 'type_name'=>'Станок', 'name'=>$m['name'], 'code'=>$m['code']];
 foreach ($workers as $w) $labels[] = ['type'=>'worker', 'type_name'=>'Работник', 'name'=>$w['name'], 'code'=>$w['code']];
 foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа деталей', 'name'=>$g['name'], 'code'=>groupQrCode((int)$g['id']), 'note'=>$g['status']==='closed'?'Закрыта':'Открыта'];
+if(isset($_GET['group_id'])){
+ $id=filter_var($_GET['group_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+ $labels=array_values(array_filter($labels,fn($item)=>$id!==false && $item['type']==='group' && $item['code']===groupQrCode($id)));
+}
 ?><!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Этикетки — MiniQRDOE</title>
@@ -45,5 +49,5 @@ foreach ($groups as $g) $labels[] = ['type'=>'group', 'type_name'=>'Группа
 </article>
 <?php endforeach; ?>
 </div>
-<?php if (!$labels): ?><div class="card">Сначала добавьте станки, работников или группы деталей.</div><?php endif; ?>
+<?php if (!$labels): ?><div class="card">Нет этикеток для выбранной записи.</div><?php endif; ?>
 </main></body></html>

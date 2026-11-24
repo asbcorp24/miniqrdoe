@@ -6,29 +6,34 @@ CREATE TABLE IF NOT EXISTS route_steps(id INTEGER PRIMARY KEY,route_id INTEGER N
 CREATE TABLE IF NOT EXISTS group_steps(id INTEGER PRIMARY KEY,group_id INTEGER NOT NULL REFERENCES part_groups(id),position INTEGER NOT NULL,name TEXT NOT NULL,machines TEXT NOT NULL,UNIQUE(group_id,position));
 CREATE TABLE IF NOT EXISTS route_operations(entry_id INTEGER PRIMARY KEY REFERENCES work_entries(id),step_id INTEGER NOT NULL REFERENCES group_steps(id),quantity INTEGER NOT NULL CHECK(quantity>0),good INTEGER NOT NULL DEFAULT 0,scrap INTEGER NOT NULL DEFAULT 0,rework INTEGER NOT NULL DEFAULT 0, CHECK(good>=0 AND scrap>=0 AND rework>=0 AND good+scrap+rework<=quantity));
 CREATE INDEX IF NOT EXISTS route_operations_step ON route_operations(step_id);");
+ foreach(["routes"=>["archived"=>"INTEGER NOT NULL DEFAULT 0","previous_id"=>"INTEGER"],"route_steps"=>["parents"=>"TEXT","norm_seconds"=>"INTEGER NOT NULL DEFAULT 0","instruction"=>"TEXT NOT NULL DEFAULT ''"],"group_steps"=>["parents"=>"TEXT","norm_seconds"=>"INTEGER NOT NULL DEFAULT 0","instruction"=>"TEXT NOT NULL DEFAULT ''"]] as $table=>$cols){$existing=array_column($p->query("PRAGMA table_info($table)")->fetchAll(),"name");foreach($cols as $key=>$type)if(!in_array($key,$existing,true)){try{$p->exec("ALTER TABLE $table ADD COLUMN $key $type");}catch(PDOException $e){if(!in_array($key,array_column($p->query("PRAGMA table_info($table)")->fetchAll(),"name"),true))throw $e;}}}
+ $p->exec("CREATE TABLE IF NOT EXISTS route_inputs(entry_id INTEGER NOT NULL REFERENCES work_entries(id),source_position INTEGER NOT NULL,quantity INTEGER NOT NULL CHECK(quantity>0),PRIMARY KEY(entry_id,source_position))");
 }
 function route_tx(PDO $p, callable $fn): void {$p->exec('BEGIN IMMEDIATE');try{$fn();$p->exec('COMMIT');}catch(Throwable $e){$p->exec('ROLLBACK');throw $e;}}
 function route_create(PDO $p): void {
- $name=required('name');$names=$_POST['step_name']??[];$machines=$_POST['step_machines']??[];
+ $previous=(int)($_POST['previous_id']??0);$name=required('name');$names=$_POST['step_name']??[];$machines=$_POST['step_machines']??[];
  if(!is_array($names)||count($names)>50)throw new DomainException('Неверные этапы');
- route_tx($p,function()use($p,$name,$names,$machines){
- $p->prepare('INSERT INTO routes(name) VALUES(?)')->execute([$name]);$id=(int)$p->lastInsertId();$pos=0;
+ route_tx($p,function()use($p,$name,$names,$machines,$previous){
+ if($previous&&!first('SELECT id FROM routes WHERE id=? AND archived=0',[$previous]))throw new DomainException('Версия уже архивирована');
+ $p->prepare('INSERT INTO routes(name,previous_id) VALUES(?,?)')->execute([$name,$previous?:null]);$id=(int)$p->lastInsertId();$pos=0;
  foreach($names as $i=>$raw){$n=trim((string)$raw);if($n==='')continue;if(strlen($n)>360)throw new DomainException('Слишком длинное название этапа');$ids=array_values(array_unique(array_map('intval',(array)($machines[$i]??[]))));if(!$ids)throw new DomainException('Выберите станки для этапа '.$n);foreach($ids as $m)if(!first('SELECT id FROM machines WHERE id=? AND active=1',[$m]))throw new DomainException('Станок недоступен');
- $p->prepare('INSERT INTO route_steps(route_id,position,name,machines) VALUES(?,?,?,?)')->execute([$id,++$pos,$n,json_encode($ids)]);}
- if(!$pos)throw new DomainException('Добавьте хотя бы один этап');
+ $pos++;$rawParents=trim((string)($_POST['step_parents'][$i]??''));$parents=$rawParents===''?[$pos-1]:array_map('intval',explode(',',$rawParents));$parents=array_values(array_unique($parents));foreach($parents as $parent)if($parent<0||$parent>=$pos)throw new DomainException('Предшественники должны иметь меньший номер');if(in_array(0,$parents,true)&&count($parents)>1)throw new DomainException('Вход партии нельзя объединять с этапами');$norm=filter_var($_POST['step_norm'][$i]??0,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);if($norm===false)throw new DomainException('Неверный норматив');$instruction=trim((string)($_POST['step_instruction'][$i]??''));if(strlen($instruction)>12000)throw new DomainException('Инструкция слишком длинная');
+ $p->prepare('INSERT INTO route_steps(route_id,position,name,machines,parents,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?)')->execute([$id,$pos,$n,json_encode($ids),json_encode($parents),$norm,$instruction]);}
+ if(!$pos)throw new DomainException('Добавьте хотя бы один этап');if($previous)$p->prepare('UPDATE routes SET archived=1 WHERE id=?')->execute([$previous]);
  });
 }
 function route_group(PDO $p): void {
  $route=positive('route_id');$name=required('name');$received=dateField('received_at');$planned=dateField('planned_at',true);$qty=positive('quantity');
  route_tx($p,function()use($p,$route,$name,$received,$planned,$qty){
- $steps=query('SELECT * FROM route_steps WHERE route_id=? ORDER BY position',[$route]);if(!$steps)throw new DomainException('Маршрут не найден');
+ $steps=query('SELECT s.* FROM route_steps s JOIN routes r ON r.id=s.route_id WHERE s.route_id=? AND r.archived=0 ORDER BY s.position',[$route]);if(!$steps)throw new DomainException('Маршрут не найден');
  $p->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([$name,$received,$planned,$qty]);$id=(int)$p->lastInsertId();
- foreach($steps as $s)$p->prepare('INSERT INTO group_steps(group_id,position,name,machines) VALUES(?,?,?,?)')->execute([$id,$s['position'],$s['name'],$s['machines']]);
+ foreach($steps as $s)$p->prepare('INSERT INTO group_steps(group_id,position,name,machines,parents,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?)')->execute([$id,$s['position'],$s['name'],$s['machines'],$s['parents'],$s['norm_seconds'],$s['instruction']]);
  });
 }
 function route_steps(int $group): array {
  $steps=query("SELECT s.*,COALESCE(SUM(o.good),0) good,COALESCE(SUM(o.scrap),0) scrap,COALESCE(SUM(o.rework),0) rework,COALESCE(SUM(CASE WHEN e.status='active' THEN o.quantity ELSE 0 END),0) reserved FROM group_steps s LEFT JOIN route_operations o ON o.step_id=s.id LEFT JOIN work_entries e ON e.id=o.entry_id WHERE s.group_id=? GROUP BY s.id ORDER BY s.position",[$group]);
  if(!$steps)return [];
+ if($steps[0]['parents']!==null)return route_graph_balances($group,$steps);
  $g=first('SELECT quantity FROM part_groups WHERE id=?',[$group]);$input=(int)$g['quantity']+array_sum(array_column($steps,'scrap'));
  foreach($steps as &$s){$s['available']=$input-(int)$s['good']-(int)$s['scrap']-(int)$s['reserved'];$input=(int)$s['good'];}unset($s);return $steps;
 }
@@ -38,6 +43,7 @@ function route_start(PDO $p,int $group,int $machine,int $worker,int $n): void {
  if($qty>$step['available'])throw new DomainException('Доступно деталей: '.$step['available']);
  $p->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at) VALUES(?,?,?,?,datetime('now'))")->execute([$machine,$worker,$group,$n]);$entry=(int)$p->lastInsertId();
  $p->prepare('INSERT INTO route_operations(entry_id,step_id,quantity) VALUES(?,?,?)')->execute([$entry,$id,$qty]);
+ if($step['parents']!==null){$left=$qty;foreach($step['sources'] as $source=>$available){$take=min($left,$available);if($take>0){$p->prepare('INSERT INTO route_inputs(entry_id,source_position,quantity) VALUES(?,?,?)')->execute([$entry,$source,$take]);$left-=$take;}}if($left)throw new DomainException('Недостаточный остаток');}
 }
 function route_finish(PDO $p,array $entry): bool {
  $o=first('SELECT o.*,s.position FROM route_operations o JOIN group_steps s ON s.id=o.step_id WHERE o.entry_id=?',[$entry['id']]);if(!$o)return false;
@@ -47,8 +53,16 @@ function route_finish(PDO $p,array $entry): bool {
  $p->prepare('UPDATE route_operations SET good=?,scrap=?,rework=? WHERE entry_id=?')->execute([$good,$scrap,$rework,$entry['id']]);
  $p->prepare("UPDATE work_entries SET status='done',quality_result=?,quality_reason=?,ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'")->execute([$quality,$reason,$entry['id']]);
  if(!first("SELECT id FROM work_entries WHERE id=? AND status='done'",[$entry['id']]))throw new DomainException('Операция не сохранена');
- if(!first('SELECT id FROM group_steps WHERE group_id=? AND position>?',[$entry['group_id'],$o['position']])){
+ $steps=route_steps((int)$entry['group_id']);$terminal=true;if($steps[0]['parents']!==null){foreach($steps as $s)if(in_array((int)$o['position'],json_decode($s['parents'],true),true))$terminal=false;}else $terminal=!first('SELECT id FROM group_steps WHERE group_id=? AND position>?',[$entry['group_id'],$o['position']]);
+ if($terminal){
  $p->prepare('UPDATE part_groups SET completed=completed+? WHERE id=?')->execute([$good,$entry['group_id']]);
  $p->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);}
  return true;
 }
+
+function route_graph_balances(int $group,array $steps): array {
+ $g=first('SELECT quantity FROM part_groups WHERE id=?',[$group]);$pool=[0=>(int)$g['quantity']];foreach($steps as $s){$pos=(int)$s['position'];$pool[$pos]=(int)$s['good'];$pool[-$pos]=(int)$s['rework'];}
+ foreach(query('SELECT i.source_position,SUM(i.quantity) used FROM route_inputs i JOIN work_entries e ON e.id=i.entry_id WHERE e.group_id=? GROUP BY i.source_position',[$group]) as $u)$pool[(int)$u['source_position']]-=(int)$u['used'];
+ foreach($steps as &$s){$pos=(int)$s['position'];$sources=[-$pos,...json_decode($s['parents'],true)];$s['sources']=[];foreach($sources as $source)$s['sources'][$source]=max(0,$pool[$source]??0);$s['available']=array_sum($s['sources']);}unset($s);return $steps;
+}
+function route_archive(PDO $p): void {$p->prepare('UPDATE routes SET archived=1 WHERE id=?')->execute([positive('route_id')]);}

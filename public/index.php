@@ -23,6 +23,7 @@ try {
  $requestedPage=(string)($_GET['page']??'work');
  if (in_array($requestedPage,['groups','directory','reports'],true) || ($_GET['action']??'')==='csv') admin_require();
  if(($_GET['action']??'')==='csv')exportCsv();
+ if($requestedPage==='reports' && ($_GET['tab']??'')==='groups' && ($_GET['group_csv']??'')==='1'){define('GROUP_EXPORT_ONLY',true);require dirname(__DIR__).'/src/group_reports.php';}
  if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!hash_equals(token(),(string)($_POST['csrf']??'')))throw new DomainException('Сессия устарела: перезагрузите страницу');
   $requestedAction=(string)($_POST['action']??'');
@@ -61,7 +62,7 @@ $csrf=token();
 <?php elseif($page==='groups'):?>
 <div class="headline"><div><small>ПАРТИИ ИЗДЕЛИЙ</small><h1>Группы деталей</h1><p>Группа закрывается автоматически, когда изготовлено установленное количество.</p></div></div>
 <div class="columns"><section class="card"><h2>Создать группу</h2><form method="post"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="group"><input type="hidden" name="back" value="groups"><label>Название / номер группы</label><input name="name" required maxlength="180" placeholder="Заказ 104-А"><label>Время приёма</label><input type="datetime-local" name="received_at" required value="<?=date('Y-m-d\TH:i')?>"><label>Плановое время изготовления</label><input type="datetime-local" name="planned_at"><label>Количество деталей</label><input type="number" min="1" name="quantity" required><button class="primary full">+ Создать группу</button></form></section><section class="card"><h2>Состояние производства</h2><div class="metrics"><div><b><?=count(array_filter($groups,fn($g)=>$g['status']==='open'))?></b><span>Открытых групп</span></div><div><b><?=count(array_filter($groups,fn($g)=>$g['status']==='closed'))?></b><span>Закрытых групп</span></div></div><p class="sub">Номер детали назначается в начале работы. Счётчик готовых увеличивается только при завершении.</p></section></div>
-<section class="card"><h2>Все группы</h2><div class="tablewrap"><table><thead><tr><th>ID</th><th>Название</th><th>Приём</th><th>План</th><th>Готово</th><th>Статус</th></tr></thead><tbody><?php foreach($groups as $g):?><tr><td><?=$g['id']?></td><td><?=h($g['name'])?></td><td><?=h($g['received_at'])?></td><td><?=h($g['planned_at']??'—')?></td><td><div class="bar"><i style="width:<?=100*$g['completed']/$g['quantity']?>%"></i></div><?=$g['completed']?> / <?=$g['quantity']?></td><td><span class="chip <?= $g['status']==='closed'?'green':'' ?>"><?= $g['status']==='closed'?'Закрыта':'Открыта' ?></span></td></tr><?php endforeach;?></tbody></table></div></section>
+<section class="card"><h2>Все группы</h2><div class="tablewrap"><table><thead><tr><th>ID</th><th>Название</th><th>Приём</th><th>План</th><th>Готово</th><th>Статус</th></tr></thead><tbody><?php foreach($groups as $g):?><tr><td><?=$g['id']?></td><td><a href="?page=reports&amp;tab=groups&amp;group_id=<?=(int)$g['id']?>"><?=h($g['name'])?></a></td><td><?=h($g['received_at'])?></td><td><?=h($g['planned_at']??'—')?></td><td><div class="bar"><i style="width:<?=100*$g['completed']/$g['quantity']?>%"></i></div><?=$g['completed']?> / <?=$g['quantity']?></td><td><span class="chip <?= $g['status']==='closed'?'green':'' ?>"><?= $g['status']==='closed'?'Закрыта':'Открыта' ?></span></td></tr><?php endforeach;?></tbody></table></div></section>
 <?php elseif($page==='directory'):?>
 <div class="headline"><div><small>СПРАВОЧНИКИ</small><h1>Станки и работники</h1><p>Удаление доступно администратору. Записи с историей операций переходят в архив.</p></div></div>
 <div class="columns">
@@ -84,6 +85,7 @@ $csrf=token();
 <button type="submit" class="scan">Восстановить</button></form></div>
 <?php endforeach;?></details><?php endif;?>
 </section><?php endforeach;?></div>
+<?php elseif($page==='reports' && ($_GET['tab']??'')==='groups'): require dirname(__DIR__).'/src/group_reports.php'; ?>
 <?php elseif($page==='reports'):
 try {[$from,$to,$start,$end]=period();}catch(DomainException $e){$from=date('Y-m-01');$to=date('Y-m-d');$start=$from.' 00:00:00';$end=date('Y-m-d',strtotime($to.' +1 day')).' 00:00:00';}
 $params=[$start,$end];
@@ -92,7 +94,7 @@ $workerStats=query("SELECT COALESCE(w.name,'Работник #' || e.worker_id) 
 $machineStats=query("SELECT COALESCE(m.name,'Станок #' || e.machine_id) name,COUNT(*) total,COALESCE(SUM(e.status='done'),0) done,COALESCE(SUM(CASE WHEN e.status='done' THEN e.duration_seconds ELSE 0 END),0) seconds FROM work_entries e LEFT JOIN machines m ON e.machine_id=m.id WHERE e.started_at>=? AND e.started_at<? GROUP BY e.machine_id ORDER BY done DESC",$params);
 $days=query("SELECT substr(started_at,1,10) day,COUNT(*) total,COALESCE(SUM(status='done'),0) done FROM work_entries WHERE started_at>=? AND started_at<? GROUP BY substr(started_at,1,10) ORDER BY day",$params);
 ?>
-<div class="headline"><div><small>ПРОИЗВОДСТВЕННАЯ АНАЛИТИКА</small><h1>Отчёты</h1><p>Показатели по работникам, станкам и дням; время хранится в UTC.</p></div></div>
+<div class="headline"><div><small>ПРОИЗВОДСТВЕННАЯ АНАЛИТИКА</small><h1>Отчёты</h1><p><a class="export" href="?page=reports&amp;tab=groups">Аналитика по группам</a></p><p>Показатели по работникам, станкам и дням; время хранится в UTC.</p></div></div>
 <form class="filters" method="get"><input type="hidden" name="page" value="reports"><label>С даты<input type="date" name="from" value="<?=h($from)?>"></label><label>По дату<input type="date" name="to" value="<?=h($to)?>"></label><button class="primary">Применить</button><a class="export" href="?action=csv&amp;from=<?=h($from)?>&amp;to=<?=h($to)?>">↓ Скачать CSV</a></form>
 <div class="kpis"><div><span>Операций</span><b><?=$stats['total']?></b></div><div><span>Изготовлено</span><b><?=$stats['done']?></b></div><div><span>В работе</span><b><?=$stats['active']?></b></div><div><span>Время работы</span><b><?=round($stats['seconds']/3600,1)?> ч</b></div></div>
 <div class="columns"><?php foreach([['По работникам',$workerStats],['По станкам',$machineStats]] as [$title,$data]):?><section class="card"><h2><?=$title?></h2><div class="tablewrap"><table><thead><tr><th>Наименование</th><th>Операций</th><th>Готово</th><th>Часов</th><th>Мин/деталь</th></tr></thead><tbody><?php foreach($data as $r):?><tr><td><?=h($r['name'])?></td><td><?=$r['total']?></td><td><?=$r['done']?></td><td><?=round($r['seconds']/3600,2)?></td><td><?=$r['done']?round($r['seconds']/60/$r['done'],1):'—'?></td></tr><?php endforeach;?></tbody></table></div></section><?php endforeach;?></div>

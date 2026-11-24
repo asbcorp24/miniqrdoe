@@ -129,12 +129,22 @@ function perform(string $action): void {
    $entry=first('SELECT e.*,w.code worker_code FROM work_entries e JOIN workers w ON w.id=e.worker_id WHERE e.id=?',[$id]);
    if(!$entry||$entry['status']!=='active')throw new DomainException('Работа уже закрыта');
    if(!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
-   $pdo->prepare("UPDATE work_entries SET status='done',ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'")->execute([$id]);
+   $finish=$pdo->prepare("UPDATE work_entries SET status='done',ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'");
+   $finish->execute([$id]);
+   if($finish->rowCount()!==1)throw new DomainException('Не удалось завершить операцию: запись не обновлена');
    $s=$pdo->prepare("UPDATE part_groups SET completed=completed+1 WHERE id=? AND status='open' AND completed<quantity");
    $s->execute([$entry['group_id']]);
    if($s->rowCount()!==1)throw new DomainException('Группа уже закрыта');
    $pdo->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);
-   $pdo->commit();return;
+   // A legacy SQLite trigger may delete or alter the row on UPDATE.
+   // Check before commit, so a disappearing operation rolls back completely.
+   $saved=first('SELECT id,status FROM work_entries WHERE id=?',[$id]);
+   if(!$saved||$saved['status']!=='done')
+    throw new DomainException('Операция исчезла при завершении. Изменения отменены; проверьте триггеры SQLite.');
+   $database=first('PRAGMA database_list');
+   $pdo->commit();
+   $_SESSION['finish_check']=['id'=>$id,'db_file'=>(string)($database['file']??'')];
+   return;
   }catch(Throwable $e){$pdo->rollBack();throw $e;}
  }
  throw new DomainException('Недопустимое действие');

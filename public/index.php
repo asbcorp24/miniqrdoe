@@ -7,6 +7,19 @@ session_start();
 $error='';$success=$_SESSION['success']??'';unset($_SESSION['success']);
 try {
  db();
+ // Verify that a committed finish remains visible after the redirect/new connection.
+ if($_SERVER['REQUEST_METHOD']!=='POST' && isset($_SESSION['finish_check'])){
+  $check=$_SESSION['finish_check'];unset($_SESSION['finish_check']);
+  $finished=first('SELECT status FROM work_entries WHERE id=?',[(int)$check['id']]);
+  $database=first('PRAGMA database_list');
+  $sameFile=(string)($check['db_file']??'')===(string)($database['file']??'');
+  if(!$finished || $finished['status']!=='done'){
+   $success='';
+   if(!$sameFile) $error='После завершения сменился файл SQLite. Проверьте путь к базе командой php tools/diagnose_journal.php.';
+   elseif(!$finished) $error='Операция №'.(int)$check['id'].' исчезла после сохранения. Проверьте триггеры SQLite командой php tools/diagnose_journal.php.';
+   else $error='Статус операции №'.(int)$check['id'].' изменился после сохранения. Проверьте триггеры SQLite командой php tools/diagnose_journal.php.';
+  }
+ }
  $requestedPage=(string)($_GET['page']??'work');
  if (in_array($requestedPage,['groups','directory','reports'],true) || ($_GET['action']??'')==='csv') admin_require();
  if(($_GET['action']??'')==='csv')exportCsv();

@@ -39,6 +39,8 @@
   clearScan();
  }
  function openFinish(button){
+  document.getElementById('finish-form').reset();
+  document.querySelector('[name=quality_reason]').required=false;
   expectedFinishCode=button.dataset.finishWorkerCode||'';
   document.getElementById('finish-entry-id').value=button.dataset.finishEntry||'';
   document.getElementById('finish-worker-name').textContent=button.dataset.finishWorkerName||'';
@@ -99,7 +101,12 @@
  document.querySelectorAll('[data-finish-entry]').forEach(b=>b.addEventListener('click',()=>openFinish(b)));
  document.getElementById('cancel-finish')?.addEventListener('click',closeFinish);
  finishModal?.addEventListener('click',e=>{if(e.target===finishModal)closeFinish();});
+ const quality=document.getElementById('quality-result');
+ const reason=document.querySelector('[name=quality_reason]');
+ quality?.addEventListener('change',()=>{reason.required=quality.value!=='good';});
+ document.querySelector('[name=rework_of]')?.addEventListener('change',e=>{const opt=e.target.selectedOptions[0];if(opt?.dataset.group)document.getElementById('group').value=opt.dataset.group;});
  document.getElementById('finish-form')?.addEventListener('submit',e=>{
+  if(quality.value!=='good'&&!reason.value.trim()){e.preventDefault();finishMessage('Укажите причину брака или доработки.');return;}
   if(!finishCode.value||finishCode.value!==expectedFinishCode){e.preventDefault();finishMessage('Сначала отсканируйте код работника.');}
  });
  document.getElementById('close-scanner')?.addEventListener('click',stop);

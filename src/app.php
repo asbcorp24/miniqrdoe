@@ -32,6 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_work_worker ON work_entries(worker_id,status);
 CREATE INDEX IF NOT EXISTS idx_work_machine_status ON work_entries(machine_id,status);
 CREATE INDEX IF NOT EXISTS idx_work_machine ON work_entries(machine_id,started_at);
 CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
+CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 SQL);
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
  foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
@@ -49,6 +50,7 @@ SQL);
  }
  return $pdo;
 }
+function app_setting(string $key,string $default='0'): string {$r=first('SELECT value FROM app_settings WHERE key=?',[$key]);return $r?(string)$r['value']:$default;}
 function h(mixed $x): string {return htmlspecialchars((string)$x,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
 function query(string $sql,array $args=[]): array {$s=db()->prepare($sql);$s->execute($args);return $s->fetchAll();}
 function first(string $sql,array $args=[]): ?array {return query($sql,$args)[0]??null;}
@@ -108,6 +110,7 @@ function perform(string $action): void {
    $pdo->exec('COMMIT');return;
   }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
+ if($action==='save_settings'){admin_require();$pdo->prepare('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')->execute(['finish_worker_scan',isset($_POST['finish_worker_scan'])?'1':'0']);$_SESSION['success']='Настройки сохранены';return;}
  if($action==='route_archive'){route_archive($pdo);return;}
  if($action==='route_create'){route_create($pdo);return;}
  if($action==='group'){
@@ -137,12 +140,13 @@ function perform(string $action): void {
  if($action==='finish'){
   $id=positive('entry_id');
   $workerCode=trim((string)($_POST['worker_code']??''));
-  if(!preg_match('/^2[0-9]{11}$/D',$workerCode))throw new DomainException('Для завершения отсканируйте QR-код работника');
+  $requireWorkerScan=app_setting('finish_worker_scan','1')!=='0';
+  if($requireWorkerScan&&!preg_match('/^2[0-9]{11}$/D',$workerCode))throw new DomainException('Для завершения отсканируйте QR-код работника');
   $pdo->exec('BEGIN IMMEDIATE');
   try {
    $entry=first('SELECT e.*,w.code worker_code FROM work_entries e JOIN workers w ON w.id=e.worker_id WHERE e.id=?',[$id]);
    if(!$entry||$entry['status']!=='active')throw new DomainException('Работа уже закрыта');
-   if(!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
+   if($requireWorkerScan&&!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
    if(route_finish($pdo,$entry)){$pdo->exec('COMMIT');return;}
    $quality=(string)($_POST['quality_result']??'good');
    if(!in_array($quality,['good','scrap','rework'],true))throw new DomainException('Неизвестный результат');

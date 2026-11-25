@@ -35,8 +35,9 @@ CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 SQL);
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
+ $migratingBatchQuality=!in_array('batch_good',$columns,true);
  foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)','quantity'=>'INTEGER NOT NULL DEFAULT 1 CHECK(quantity>0)','batch_good'=>'INTEGER NOT NULL DEFAULT 0','batch_scrap'=>'INTEGER NOT NULL DEFAULT 0','batch_rework'=>'INTEGER NOT NULL DEFAULT 0'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
- $pdo->exec("UPDATE work_entries SET batch_good=CASE WHEN status='done' THEN quantity ELSE 0 END,batch_scrap=CASE WHEN quality_result='scrap' THEN quantity ELSE 0 END,batch_rework=CASE WHEN quality_result='rework' THEN quantity ELSE 0 END WHERE batch_good=1 AND batch_scrap=0 AND batch_rework=0");
+ if($migratingBatchQuality)$pdo->exec("UPDATE work_entries SET batch_good=CASE WHEN status='done' THEN quantity ELSE 0 END,batch_scrap=CASE WHEN quality_result='scrap' THEN quantity ELSE 0 END,batch_rework=CASE WHEN quality_result='rework' THEN quantity ELSE 0 END");
  route_schema($pdo);
  // Convert stored legacy labels to numeric-only QR values without touching record IDs.
  // The old printed QR labels must be replaced after this one-time migration.

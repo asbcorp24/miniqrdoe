@@ -21,3 +21,62 @@
 @media(min-width:1100px){.columns{grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr)}}
 @media(max-width:820px){.columns{grid-template-columns:1fr}.active-filters{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.active-filters{grid-template-columns:1fr}.filter-actions{grid-column:auto}.filter-actions button{flex:1}.active-card .item{align-items:flex-start}}
+
+/* MiniQRDOE unified shop-floor interface */
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:#f3f6fb;color:#17243b;font-synthesis:none}
+body{background:#f3f6fb}
+.app-header{position:sticky;top:0;z-index:10;background:#14233f;padding:0 24px;box-shadow:0 3px 18px #0b18301c}
+.header-inner{max-width:1440px;min-height:76px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{display:flex;align-items:center;gap:12px;color:#fff;text-decoration:none;flex:none}
+.brand-mark{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:#2f6bea;color:white;font-weight:850;font-size:20px;box-shadow:0 4px 12px #1d55c544}
+.brand b{font-size:17px;letter-spacing:.2px}.brand small{font-size:11px;color:#aebbd0;letter-spacing:.3px}
+.main-nav{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.main-nav a{font-size:13px;padding:10px 13px;border-radius:8px;white-space:nowrap}
+.main-nav a.on{background:#2c4165}
+.logout-inline{margin:0}.logout-inline button{min-height:38px;padding:8px 12px;background:#263b5f;color:#dce6f6}
+.app-main{max-width:1440px;padding:30px 24px 72px}
+.page-intro{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:0 0 20px}
+.eyebrow{font-size:11px;font-weight:850;letter-spacing:1.35px;color:#5879b5}
+.page-intro h1{font-size:30px;line-height:1.15;margin:7px 0 8px;letter-spacing:-.6px;color:#14233d}
+.page-intro p{margin:0;color:#75849a;font-size:14px}
+.live-pill{display:flex;align-items:center;gap:9px;background:#e8f7ee;color:#167447;border:1px solid #d2efde;padding:10px 14px;border-radius:30px;font-size:13px;font-weight:750;white-space:nowrap}
+.live-pill span{width:8px;height:8px;background:#22a765;border-radius:50%;box-shadow:0 0 0 4px #22a76520}
+.scan-notice{display:flex;align-items:center;gap:10px;background:#edf4ff;color:#355b99;border:1px solid #dce8fb;padding:12px 15px;font-size:13px;line-height:1.5}
+.work-columns{grid-template-columns:minmax(360px,.92fr) minmax(0,1.08fr);gap:20px;align-items:start}
+.card{padding:23px;border-radius:15px;border-color:#e5ebf4;box-shadow:0 7px 26px #21385d0a}
+.card-heading{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.card-heading>div:last-of-type{min-width:0}
+.card-heading h2{font-size:17px;margin:0 0 4px;letter-spacing:-.15px}
+.card-heading p{font-size:12px;color:#8996a9;margin:0}
+.heading-icon{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:#eaf1ff;color:#2b62d5;font-size:23px;font-weight:650}
+.active-icon{background:#e8f7ee;color:#18814e}
+.journal-icon{font-size:21px}
+.start-card form>label{margin:16px 0 7px;font-size:12px;color:#53637c}
+.start-card input,.start-card select{min-height:44px;font-size:14px;border-color:#dce4ef}
+.scanner{gap:7px}
+.scanner .scan{min-width:64px;padding:10px 12px}
+.start-card .sub{margin:8px 0 12px}
+.start-card .full{margin-top:20px;min-height:49px;font-size:14px;box-shadow:0 4px 10px #2866e425}
+.active-heading{padding-bottom:17px;border-bottom:1px solid #edf1f6;margin-bottom:16px}
+.active-count{margin-left:auto}
+.active-filters{margin:0 0 10px;padding:13px;background:#f7f9fc;border:1px solid #e9eef6;border-radius:11px}
+.active-filters label{font-size:12px}
+.active-filters select{min-height:42px;font-size:13px;background:white}
+.filter-actions button{min-height:40px;padding:9px 15px;font-size:13px}
+.active-card .item{padding:15px 0;border-top:1px solid #eef2f7;gap:12px}
+.active-card .item:first-of-type{border-top:0}
+.active-card .item strong{font-size:13px;color:#1c2c46}
+.active-card .item p{font-size:12px;color:#65758d;margin:5px 0}
+.active-card .item small{font-size:11px;color:#8b98aa}
+.active-card .finish{min-height:41px;padding:9px 13px;font-size:12px}
+.journal-card{margin-top:20px}
+.journal-card .card-heading{padding-bottom:16px;border-bottom:1px solid #edf1f6}
+.journal-card .card-heading .chip{margin-left:auto}
+.journal-card table{font-size:12px}
+.journal-card th{font-size:10px;letter-spacing:.35px}
+.journal-card th,.journal-card td{padding:12px 13px}
+input:focus,select:focus,textarea:focus{outline:3px solid #dce8ff;border-color:#7fa5f4}
+button:focus-visible,a:focus-visible{outline:3px solid #8fb1ff;outline-offset:2px}
+button:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:900px){.app-header{position:relative;padding:12px 16px}.header-inner{align-items:flex-start;flex-direction:column;gap:10px}.main-nav{width:100%;justify-content:flex-start;overflow-x:auto;padding-bottom:3px}.main-nav a{padding:9px 10px}.app-main{padding:22px 16px 55px}.work-columns{grid-template-columns:1fr}}
+@media(max-width:560px){.app-main{padding:18px 12px 45px}.page-intro{align-items:flex-start;flex-direction:column}.page-intro h1{font-size:25px}.live-pill{padding:8px 12px}.card{padding:17px}.active-filters{grid-template-columns:1fr}.filter-actions{grid-column:auto}.active-card .item{align-items:center}.active-card .finish{white-space:nowrap}.journal-card .card-heading{align-items:flex-start}.journal-card .card-heading .chip{font-size:10px}}

@@ -7,6 +7,7 @@
  const finishCode=document.getElementById('finish-worker-code');
  const finishConfirm=document.getElementById('confirm-finish');
  let expectedFinishCode='';
+ const requireFinishScan=JSON.parse(document.getElementById('finish-scan-setting')?.textContent??'true');
  function finishMessage(message){
   if(finishStatus)finishStatus.textContent=message;
   if(!modal.hidden&&target==='finish-worker')status.textContent=message;
@@ -45,8 +46,9 @@
   document.getElementById('finish-entry-id').value=button.dataset.finishEntry||'';
   document.getElementById('finish-worker-name').textContent=button.dataset.finishWorkerName||'';
   finishCode.value='';
-  finishConfirm.disabled=true;
-  finishStatus.textContent='Ожидаю код работника через USB-сканер или камеру.';
+  finishConfirm.disabled=requireFinishScan;
+  finishStatus.textContent=requireFinishScan?'Ожидаю код работника через USB-сканер или камеру.':'Повторное подтверждение отключено администратором. Можно завершить операцию.';
+  const scanButton=finishModal.querySelector('[data-target="finish-worker"]');if(scanButton)scanButton.hidden=!requireFinishScan;
   finishModal.hidden=false;
   finishModal.querySelector('.modal-body')?.focus();
   clearScan();
@@ -118,7 +120,7 @@
  document.querySelector('[name=rework_of]')?.addEventListener('change',e=>{const opt=e.target.selectedOptions[0];if(opt?.dataset.group)document.getElementById('group').value=opt.dataset.group;});
  document.getElementById('finish-form')?.addEventListener('submit',e=>{
   if(quality.value!=='good'&&!reason.value.trim()){e.preventDefault();finishMessage('Укажите причину брака или доработки.');return;}
-  if(!finishCode.value||finishCode.value!==expectedFinishCode){e.preventDefault();finishMessage('Сначала отсканируйте код работника.');}
+  if(requireFinishScan&&(!finishCode.value||finishCode.value!==expectedFinishCode)){e.preventDefault();finishMessage('Сначала отсканируйте код работника.');}
  });
  document.getElementById('close-scanner')?.addEventListener('click',stop);
  modal?.addEventListener('click',e=>{if(e.target===modal)stop();});

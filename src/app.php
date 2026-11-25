@@ -148,8 +148,7 @@ function perform(string $action): void {
   try{
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Эта группа уже разделена. Выберите конечную подгруппу.');
-   if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Эта группа уже разделена; делите одну из её подгрупп');
-   $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
+    $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
    $available=(int)$g['quantity']-(int)$g['completed']-$reserved;
    if($available<=0)throw new DomainException('Нет свободных деталей для распределения');
    if($sum!==$available)throw new DomainException('Распределите ровно '.$available.' свободных деталей. Введено: '.$sum);
@@ -173,6 +172,7 @@ function perform(string $action): void {
    if($busy)throw new DomainException('Станок уже в работе (операция №'.$busy['id'].', работник: '.($busy['worker']??'неизвестен').'). Сначала завершите предыдущую операцию.');
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);
    if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
+   if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Группа разделена. Выберите конечную подгруппу.');
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');
    $n=(int)(first('SELECT MAX(part_number+quantity-1) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
    $qty=positive('batch_quantity');

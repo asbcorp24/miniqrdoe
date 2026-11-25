@@ -37,6 +37,7 @@ SQL);
  $groupColumns=array_column($pdo->query('PRAGMA table_info(part_groups)')->fetchAll(),'name');
  foreach(['parent_group_id'=>'INTEGER REFERENCES part_groups(id)','prefix'=>"TEXT NOT NULL DEFAULT ''"] as $column=>$type)if(!in_array($column,$groupColumns,true))$pdo->exec("ALTER TABLE part_groups ADD COLUMN $column $type");
  $pdo->exec('CREATE INDEX IF NOT EXISTS idx_part_groups_parent ON part_groups(parent_group_id)');
+ $pdo->exec("CREATE TABLE IF NOT EXISTS work_entry_allocations(id INTEGER PRIMARY KEY,entry_id INTEGER NOT NULL REFERENCES work_entries(id),group_id INTEGER NOT NULL REFERENCES part_groups(id),quantity INTEGER NOT NULL CHECK(quantity>0),good INTEGER NOT NULL DEFAULT 0,scrap INTEGER NOT NULL DEFAULT 0,rework INTEGER NOT NULL DEFAULT 0,UNIQUE(entry_id,group_id),CHECK(good>=0 AND scrap>=0 AND rework>=0 AND good+scrap+rework<=quantity))");
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
  $migratingBatchQuality=!in_array('batch_good',$columns,true);
  foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)','quantity'=>'INTEGER NOT NULL DEFAULT 1 CHECK(quantity>0)','batch_good'=>'INTEGER NOT NULL DEFAULT 0','batch_scrap'=>'INTEGER NOT NULL DEFAULT 0','batch_rework'=>'INTEGER NOT NULL DEFAULT 0'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
@@ -149,17 +150,22 @@ function perform(string $action): void {
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Эта группа уже разделена. Выберите конечную подгруппу.');
     $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
-   $available=(int)$g['quantity']-(int)$g['completed']-$reserved;
+   $available=(int)$g['quantity']-(int)$g['completed'];
    if($available<=0)throw new DomainException('Нет свободных деталей для распределения');
    if($sum!==$available)throw new DomainException('Распределите ровно '.$available.' свободных деталей. Введено: '.$sum);
    $steps=query('SELECT * FROM group_steps WHERE group_id=? ORDER BY position',[$group]);
-   if($steps&&first('SELECT e.id FROM work_entries e LEFT JOIN route_operations o ON o.entry_id=e.id WHERE e.group_id=? LIMIT 1',[$group]))throw new DomainException('Для группы с уже начатыми маршрутными этапами деление пока недоступно: сначала завершите текущие операции. Это защищает остатки и историю маршрута от перераспределения дважды.');
-   $insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
+    $children=[];$insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
    $copy=$pdo->prepare('INSERT INTO group_steps(group_id,position,name,machines,parents,quota,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?,?)');
    foreach($alloc as $a){
     $name=$g['name'].'-'.$a['prefix'];if(first('SELECT id FROM part_groups WHERE name=?',[$name]))throw new DomainException('Группа с названием '.$name.' уже существует');
     $insert->execute([$name,$g['received_at'],$g['planned_at'],$a['quantity'],$group,$a['prefix']]);$child=(int)$pdo->lastInsertId();
     foreach($steps as $s)$copy->execute([$child,$s['position'],$s['name'],$s['machines'],$s['parents'],$s['quota'],$s['norm_seconds'],$s['instruction']]);
+    $children[]=['id'=>$child,'quantity'=>$a['quantity']];
+   }
+   if($steps)route_allocate_active_split($pdo,$group,$children);
+   else {
+    $activePlain=query("SELECT id,quantity FROM work_entries WHERE group_id=? AND status='active' AND id NOT IN (SELECT entry_id FROM route_operations)",[$group]);
+    foreach($activePlain as $entry){$left=(int)$entry['quantity'];foreach($children as $child){if($left<=0)break;$take=min($left,(int)$child['quantity']);if($take>0){$pdo->prepare('INSERT INTO work_entry_allocations(entry_id,group_id,quantity) VALUES(?,?,?)')->execute([$entry['id'],$child['id'],$take]);$left-=$take;}}if($left)throw new DomainException('Не удалось распределить активную операцию по подгруппам');}
    }
    $pdo->exec('COMMIT');$_SESSION['success']='Группа разделена на '.count($alloc).' подгруппы. Распределено '.$sum.' шт.';return;
   }catch(Throwable $e){try{$pdo->exec('ROLLBACK');}catch(Throwable $x){}throw $e;}
@@ -216,9 +222,9 @@ function perform(string $action): void {
    $finish=$pdo->prepare("UPDATE work_entries SET status=?,quality_result=?,quality_reason=?,batch_good=?,batch_scrap=?,batch_rework=?,ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'");
    $finish->execute([$finalStatus,$quality,$reason,$good,$scrap,$rework,$id]);
    if($finish->rowCount()!==1)throw new DomainException('Не удалось завершить операцию: запись не обновлена');
-   if($good>0){
-    credit_group($pdo,(int)$entry['group_id'],$good);
-   }
+   $plainAlloc=query('SELECT * FROM work_entry_allocations WHERE entry_id=? ORDER BY id',[$id]);
+   if($plainAlloc){$lg=$good;$ls=$scrap;$lr=$rework;$lq=$total;foreach($plainAlloc as $ix=>$al){$last=$ix===count($plainAlloc)-1;$q=(int)$al['quantity'];$ag=$last?$lg:min($lg,(int)floor($good*$q/$lq));$as=$last?$ls:min($ls,(int)floor($scrap*$q/$lq));$ar=$last?$lr:min($lr,(int)floor($rework*$q/$lq));$lg-=$ag;$ls-=$as;$lr-=$ar;$lq-=$q;$pdo->prepare('UPDATE work_entry_allocations SET good=?,scrap=?,rework=? WHERE id=?')->execute([$ag,$as,$ar,$al['id']]);if($ag>0)credit_group($pdo,(int)$al['group_id'],$ag);}}
+   elseif($good>0){credit_group($pdo,(int)$entry['group_id'],$good);}
    // A legacy SQLite trigger may delete or alter the row on UPDATE.
    // Check before commit, so a disappearing operation rolls back completely.
    $saved=first('SELECT id,status FROM work_entries WHERE id=?',[$id]);

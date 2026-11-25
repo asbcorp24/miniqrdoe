@@ -145,3 +145,12 @@ fieldset button{margin:8px 6px 0 0;background:#edf2fa;color:#435675}
 @media(max-width:900px){main:not(.app-main){padding:22px 16px 55px}.labels-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){main:not(.app-main){padding:18px 12px 45px}.headline h1{font-size:24px}.filters{display:grid;grid-template-columns:1fr}.filters label{min-width:0}.auth-card{margin:3vh auto 0;padding:18px}.labels-toolbar{grid-template-columns:1fr}.labels-toolbar .sub,#label-message{grid-column:auto}.metrics{gap:20px}}
 @media print{.app-header,.headline,.labels-toolbar{display:none!important}}
+
+/* Batch quantity controls */
+#batch-quantity{max-width:180px;font-size:18px;font-weight:750;text-align:center}
+#batch-quantity-help{margin-top:5px;color:#718097}
+#batch-finish{padding:14px;background:#f5f8fd;border:1px solid #e5ebf5;border-radius:11px;margin:12px 0}
+#batch-finish input{max-width:150px;font-size:16px;font-weight:700}
+#batch-reserved{font-weight:750;color:#314b76;margin:0 0 10px}
+.active-operation .operation-info{min-width:0}
+.active-operation .operation-info strong{overflow-wrap:anywhere}

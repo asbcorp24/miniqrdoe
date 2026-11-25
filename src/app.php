@@ -153,6 +153,7 @@ function perform(string $action): void {
    if($available<=0)throw new DomainException('Нет свободных деталей для распределения');
    if($sum!==$available)throw new DomainException('Распределите ровно '.$available.' свободных деталей. Введено: '.$sum);
    $steps=query('SELECT * FROM group_steps WHERE group_id=? ORDER BY position',[$group]);
+   if($steps&&first('SELECT e.id FROM work_entries e LEFT JOIN route_operations o ON o.entry_id=e.id WHERE e.group_id=? LIMIT 1',[$group]))throw new DomainException('Для группы с уже начатыми маршрутными этапами деление пока недоступно: сначала завершите текущие операции. Это защищает остатки и историю маршрута от перераспределения дважды.');
    $insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
    $copy=$pdo->prepare('INSERT INTO group_steps(group_id,position,name,machines,parents,quota,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?,?)');
    foreach($alloc as $a){

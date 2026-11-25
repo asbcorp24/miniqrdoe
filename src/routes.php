@@ -41,7 +41,7 @@ function route_start(PDO $p,int $group,int $machine,int $worker,int $n): void {
  $steps=route_steps($group);$id=positive('step_id');$qty=positive('batch_quantity');$step=null;foreach($steps as $s)if((int)$s['id']===$id)$step=$s;
  if(!$step||!in_array($machine,json_decode($step['machines'],true),true))throw new DomainException('Станок не подходит для этапа');
  if($qty>$step['available'])throw new DomainException('Доступно деталей: '.$step['available']);
- $p->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at) VALUES(?,?,?,?,datetime('now'))")->execute([$machine,$worker,$group,$n]);$entry=(int)$p->lastInsertId();
+ $p->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at,quantity) VALUES(?,?,?,?,datetime('now'),?)")->execute([$machine,$worker,$group,$n,$qty]);$entry=(int)$p->lastInsertId();
  $p->prepare('INSERT INTO route_operations(entry_id,step_id,quantity) VALUES(?,?,?)')->execute([$entry,$id,$qty]);
  if($step['parents']!==null){$left=$qty;foreach($step['sources'] as $source=>$available){$take=min($left,$available);if($take>0){$p->prepare('INSERT INTO route_inputs(entry_id,source_position,quantity) VALUES(?,?,?)')->execute([$entry,$source,$take]);$left-=$take;}}if($left)throw new DomainException('Недостаточный остаток');}
 }

@@ -35,7 +35,9 @@ CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 SQL);
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
- foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
+ $migratingBatchQuality=!in_array('batch_good',$columns,true);
+ foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)','quantity'=>'INTEGER NOT NULL DEFAULT 1 CHECK(quantity>0)','batch_good'=>'INTEGER NOT NULL DEFAULT 0','batch_scrap'=>'INTEGER NOT NULL DEFAULT 0','batch_rework'=>'INTEGER NOT NULL DEFAULT 0'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
+ if($migratingBatchQuality)$pdo->exec("UPDATE work_entries SET batch_good=CASE WHEN status='done' THEN quantity ELSE 0 END,batch_scrap=CASE WHEN quality_result='scrap' THEN quantity ELSE 0 END,batch_rework=CASE WHEN quality_result='rework' THEN quantity ELSE 0 END");
  route_schema($pdo);
  // Convert stored legacy labels to numeric-only QR values without touching record IDs.
  // The old printed QR labels must be replaced after this one-time migration.
@@ -127,13 +129,16 @@ function perform(string $action): void {
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);
    if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');
-   $n=(int)(first('SELECT MAX(part_number) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
+   $n=(int)(first('SELECT MAX(part_number+quantity-1) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
+   $qty=positive('batch_quantity');
    if(route_steps($group)){route_start($pdo,$group,$machine,$worker,$n);$pdo->exec('COMMIT');return;}
-   $reserved=(int)first("SELECT COUNT(*) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n'];
-   if((int)$g['completed']+$reserved >= (int)$g['quantity'])throw new DomainException('Все оставшиеся детали уже в работе');
+   $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
+   $remaining=(int)$g['quantity']-(int)$g['completed']-$reserved;
+   if($qty>$remaining)throw new DomainException('Доступно для запуска: '.$remaining.' шт.');
    $rework=(int)($_POST['rework_of']??0);
+   if($rework && $qty!==1)throw new DomainException('Повторная обработка одной детали запускается отдельно');
    if($rework && !first("SELECT id FROM work_entries e WHERE id=? AND group_id=? AND status='cancelled' AND quality_result='rework' AND NOT EXISTS(SELECT 1 FROM work_entries r WHERE r.rework_of=e.id)",[$rework,$group]))throw new DomainException('Доработка недоступна или уже начата');
-   $pdo->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at,rework_of) VALUES(?,?,?,?,datetime('now'),?)")->execute([$machine,$worker,$group,$n,$rework?:null]);
+   $pdo->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at,rework_of,quantity) VALUES(?,?,?,?,datetime('now'),?,?)")->execute([$machine,$worker,$group,$n,$rework?:null,$qty]);
    $pdo->exec('COMMIT');return;
   }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}
  }
@@ -148,18 +153,28 @@ function perform(string $action): void {
    if(!$entry||$entry['status']!=='active')throw new DomainException('Работа уже закрыта');
    if($requireWorkerScan&&!hash_equals((string)$entry['worker_code'],$workerCode))throw new DomainException('QR-код не соответствует работнику, начавшему работу');
    if(route_finish($pdo,$entry)){$pdo->exec('COMMIT');return;}
-   $quality=(string)($_POST['quality_result']??'good');
-   if(!in_array($quality,['good','scrap','rework'],true))throw new DomainException('Неизвестный результат');
-   $reason=$quality==='good'?null:required('quality_reason');
-   $finalStatus=$quality==='good'?'done':'cancelled';
-   $finish=$pdo->prepare("UPDATE work_entries SET status=?,quality_result=?,quality_reason=?,ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'");
-   $finish->execute([$finalStatus,$quality,$reason,$id]);
+   $total=(int)($entry['quantity']??1);
+   if($total>1){
+    $good=filter_var($_POST['batch_good']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);
+    $scrap=filter_var($_POST['batch_scrap']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);
+    $rework=filter_var($_POST['batch_rework']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);
+    if($good===false||$scrap===false||$rework===false||$good+$scrap+$rework!==$total)throw new DomainException('Сумма годных, брака и доработки должна равняться '.$total.' шт.');
+   }else{
+    $quality=(string)($_POST['quality_result']??'good');
+    if(!in_array($quality,['good','scrap','rework'],true))throw new DomainException('Неизвестный результат');
+    $good=$quality==='good'?1:0;$scrap=$quality==='scrap'?1:0;$rework=$quality==='rework'?1:0;
+   }
+   $quality=$good===$total?'good':($scrap===$total?'scrap':($rework===$total?'rework':'mixed'));
+   $reason=($scrap+$rework)>0?required('quality_reason'):null;
+   $finalStatus=$good>0?'done':'cancelled';
+   $finish=$pdo->prepare("UPDATE work_entries SET status=?,quality_result=?,quality_reason=?,batch_good=?,batch_scrap=?,batch_rework=?,ended_at=datetime('now'),duration_seconds=MAX(0,strftime('%s','now')-strftime('%s',started_at)) WHERE id=? AND status='active'");
+   $finish->execute([$finalStatus,$quality,$reason,$good,$scrap,$rework,$id]);
    if($finish->rowCount()!==1)throw new DomainException('Не удалось завершить операцию: запись не обновлена');
-   if($quality==='good'){
-   $s=$pdo->prepare("UPDATE part_groups SET completed=completed+1 WHERE id=? AND status='open' AND completed<quantity");
-   $s->execute([$entry['group_id']]);
-   if($s->rowCount()!==1)throw new DomainException('Группа уже закрыта');
-   $pdo->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);
+   if($good>0){
+    $s=$pdo->prepare("UPDATE part_groups SET completed=completed+? WHERE id=? AND status='open' AND completed+?<=quantity");
+    $s->execute([$good,$entry['group_id'],$good]);
+    if($s->rowCount()!==1)throw new DomainException('Группа закрыта или количество готовых превышает план');
+    $pdo->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);
    }
    // A legacy SQLite trigger may delete or alter the row on UPDATE.
    // Check before commit, so a disappearing operation rolls back completely.
@@ -182,7 +197,7 @@ function period(): array {
 }
 function exportCsv(): never {
  [$a,$b,$from,$to]=period();
- $data=query("SELECT e.id,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status,e.quality_result,e.quality_reason,e.rework_of,rs.name route_step,ro.quantity,ro.good,ro.scrap,ro.rework FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id LEFT JOIN route_operations ro ON ro.entry_id=e.id LEFT JOIN group_steps rs ON rs.id=ro.step_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
+ $data=query("SELECT e.id,COALESCE(m.name,'Станок #' || e.machine_id) machine,COALESCE(w.name,'Работник #' || e.worker_id) worker,COALESCE(g.name,'Группа #' || e.group_id) group_name,e.part_number,e.started_at,e.ended_at,e.duration_seconds,e.status,e.quality_result,e.quality_reason,e.rework_of,rs.name route_step,COALESCE(ro.quantity,e.quantity) quantity,COALESCE(ro.good,e.batch_good) good,COALESCE(ro.scrap,e.batch_scrap) scrap,COALESCE(ro.rework,e.batch_rework) rework FROM work_entries e LEFT JOIN machines m ON m.id=e.machine_id LEFT JOIN workers w ON w.id=e.worker_id LEFT JOIN part_groups g ON g.id=e.group_id LEFT JOIN route_operations ro ON ro.entry_id=e.id LEFT JOIN group_steps rs ON rs.id=ro.step_id WHERE e.started_at>=? AND e.started_at<? ORDER BY e.id DESC",[$from,$to]);
  header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="miniqrdoe.csv"');
  $f=fopen('php://output','wb');fwrite($f,"\xEF\xBB\xBF");
  fputcsv($f,['ID','Станок','Работник','Группа','Номер детали','Начало UTC','Окончание UTC','Секунды','Статус','Результат','Причина','Доработка операции','Этап','Количество','Годные','Брак','Доработка'],';');

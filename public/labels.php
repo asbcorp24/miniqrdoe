@@ -30,12 +30,12 @@ if(isset($_GET['step_id'])){
 ?><!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Этикетки — MiniQRDOE</title>
-<link rel="stylesheet" href="assets/style.css"><link rel="stylesheet" href="assets/labels.css?v=7">
+<link rel="stylesheet" href="assets/style.css?v=3"><link rel="stylesheet" href="assets/labels.css?v=7">
 <script src="assets/qrcode.min.js" defer></script><script src="assets/code128.js" defer></script><script src="assets/labels.js?v=7" defer></script>
 </head><body>
-<header><div class="brand">▦ <span><b>MiniQRDOE</b><small>Печать этикеток</small></span></div>
-<nav><a href="index.php?page=work">Работа</a><a href="index.php?page=groups">Группы</a><a href="index.php?page=directory">Справочники</a><a href="index.php?page=reports">Аналитика</a><a class="on" href="labels.php">Этикетки</a></nav></header>
-<main><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>Этикетки</h1><p>Локальный генератор Code 128 и QR для USB-сканера. Только цифры: 1 — станок, 2 — работник, 3 — группа деталей, 4 — контейнер этапа.</p></div></div>
+<header class="app-header"><div class="header-inner"><a class="brand" href="index.php?page=work"><span class="brand-mark">M</span><span><b>MiniQRDOE</b><small>Производственный учёт</small></span></a>
+<nav class="main-nav"><a href="index.php?page=work">Работа</a><a href="index.php?page=groups">Группы</a><a href="index.php?page=directory">Справочники</a><a href="index.php?page=reports">Аналитика</a><a class="on" href="labels.php">Этикетки</a></nav></div></header>
+<main class="app-main"><div class="headline"><div><small>ПЕЧАТЬ И МАРКИРОВКА</small><h1>Этикетки</h1><p>Локальный генератор Code 128 и QR для USB-сканера. Только цифры: 1 — станок, 2 — работник, 3 — группа деталей, 4 — контейнер этапа.</p></div></div>
 <section class="card labels-toolbar"><label for="label-type">Что печатать</label>
 <select id="label-type"><option value="all">Все этикетки</option><option value="machine">Станки</option><option value="worker">Работники</option><option value="group">Группы деталей</option><option value="container">Контейнеры этапов</option></select>
 <label for="label-format">Тип кода</label><select id="label-format"><option value="barcode">Code 128</option><option value="qr">QR</option><option value="both">Оба</option></select><label for="paper-mode">Бумага</label><select id="paper-mode"><option value="a4">A4</option><option value="thermal">Термопринтер</option></select><label for="label-size">Размер наклейки</label><select id="label-size"><option value="40">40 × 20 мм</option><option value="50">50 × 30 мм</option><option value="58">58 × 40 мм</option><option value="60" selected>60 × 40 мм</option><option value="70">70 × 50 мм</option></select>

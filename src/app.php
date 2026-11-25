@@ -149,18 +149,19 @@ function perform(string $action): void {
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
    if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Эта группа уже разделена. Выберите конечную подгруппу.');
     $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
-   $available=(int)$g['quantity']-(int)$g['completed']-$reserved;
+   $available=(int)$g['quantity']-(int)$g['completed'];
    if($available<=0)throw new DomainException('Нет свободных деталей для распределения');
    if($sum!==$available)throw new DomainException('Распределите ровно '.$available.' свободных деталей. Введено: '.$sum);
    $steps=query('SELECT * FROM group_steps WHERE group_id=? ORDER BY position',[$group]);
-   if($steps&&first('SELECT e.id FROM work_entries e LEFT JOIN route_operations o ON o.entry_id=e.id WHERE e.group_id=? LIMIT 1',[$group]))throw new DomainException('Для группы с уже начатыми маршрутными этапами деление пока недоступно: сначала завершите текущие операции. Это защищает остатки и историю маршрута от перераспределения дважды.');
-   $insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
+    $children=[];$insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
    $copy=$pdo->prepare('INSERT INTO group_steps(group_id,position,name,machines,parents,quota,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?,?)');
    foreach($alloc as $a){
     $name=$g['name'].'-'.$a['prefix'];if(first('SELECT id FROM part_groups WHERE name=?',[$name]))throw new DomainException('Группа с названием '.$name.' уже существует');
     $insert->execute([$name,$g['received_at'],$g['planned_at'],$a['quantity'],$group,$a['prefix']]);$child=(int)$pdo->lastInsertId();
     foreach($steps as $s)$copy->execute([$child,$s['position'],$s['name'],$s['machines'],$s['parents'],$s['quota'],$s['norm_seconds'],$s['instruction']]);
+    $children[]=['id'=>$child,'quantity'=>$a['quantity']];
    }
+   if($steps)route_allocate_active_split($pdo,$group,$children);
    $pdo->exec('COMMIT');$_SESSION['success']='Группа разделена на '.count($alloc).' подгруппы. Распределено '.$sum.' шт.';return;
   }catch(Throwable $e){try{$pdo->exec('ROLLBACK');}catch(Throwable $x){}throw $e;}
  }

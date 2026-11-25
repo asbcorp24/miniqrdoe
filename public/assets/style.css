@@ -154,3 +154,10 @@ fieldset button{margin:8px 6px 0 0;background:#edf2fa;color:#435675}
 #batch-reserved{font-weight:750;color:#314b76;margin:0 0 10px}
 .active-operation .operation-info{min-width:0}
 .active-operation .operation-info strong{overflow-wrap:anywhere}
+
+/* Recursive production group splitting */
+.group-split{padding:10px 12px;background:#f5f8fd;border:1px solid #dce5f2;border-radius:10px}
+.group-split summary{cursor:pointer;font-weight:700;color:#29466e}
+.split-form{max-width:560px;padding:12px 0}
+.split-form textarea{width:100%;font:600 15px/1.7 ui-monospace,monospace;min-height:90px}
+.group-split .sub{margin:6px 0 12px}

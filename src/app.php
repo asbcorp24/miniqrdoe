@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS part_groups(
  id INTEGER PRIMARY KEY,name TEXT NOT NULL,received_at TEXT NOT NULL,planned_at TEXT,
  quantity INTEGER NOT NULL CHECK(quantity>0),completed INTEGER NOT NULL DEFAULT 0 CHECK(completed>=0 AND completed<=quantity),
  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')),
- closed_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP
+ closed_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,parent_group_id INTEGER REFERENCES part_groups(id),prefix TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS work_entries(
  id INTEGER PRIMARY KEY,machine_id INTEGER NOT NULL REFERENCES machines(id),
@@ -34,6 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_work_machine ON work_entries(machine_id,started_a
 CREATE INDEX IF NOT EXISTS idx_work_date ON work_entries(started_at);
 CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 SQL);
+ $groupColumns=array_column($pdo->query('PRAGMA table_info(part_groups)')->fetchAll(),'name');
+ foreach(['parent_group_id'=>'INTEGER REFERENCES part_groups(id)','prefix'=>"TEXT NOT NULL DEFAULT ''"] as $column=>$type)if(!in_array($column,$groupColumns,true))$pdo->exec("ALTER TABLE part_groups ADD COLUMN $column $type");
+ $pdo->exec('CREATE INDEX IF NOT EXISTS idx_part_groups_parent ON part_groups(parent_group_id)');
  $columns=array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name');
  $migratingBatchQuality=!in_array('batch_good',$columns,true);
  foreach(['quality_result'=>"TEXT NOT NULL DEFAULT 'good'",'quality_reason'=>'TEXT','rework_of'=>'INTEGER REFERENCES work_entries(id)','quantity'=>'INTEGER NOT NULL DEFAULT 1 CHECK(quantity>0)','batch_good'=>'INTEGER NOT NULL DEFAULT 0','batch_scrap'=>'INTEGER NOT NULL DEFAULT 0','batch_rework'=>'INTEGER NOT NULL DEFAULT 0'] as $column=>$type){if(!in_array($column,$columns,true)){try{$pdo->exec("ALTER TABLE work_entries ADD COLUMN $column $type");}catch(PDOException $e){if(!in_array($column,array_column($pdo->query('PRAGMA table_info(work_entries)')->fetchAll(),'name'),true))throw $e;}}}
@@ -75,6 +78,18 @@ function generate_qr_code(PDO $pdo, string $table, string $prefix): string {
   if (!$stmt->fetchColumn()) return $code;
  }
  throw new RuntimeException('Не удалось сгенерировать уникальный QR-код');
+}
+function credit_group(PDO $pdo,int $groupId,int $good): void {
+ if($good<=0)return;
+ $current=$groupId;$first=true;
+ while($current>0){
+  $g=first('SELECT id,parent_group_id,quantity,completed,status FROM part_groups WHERE id=?',[$current]);
+  if(!$g)throw new DomainException('Группа для учёта выпуска не найдена');
+  $s=$pdo->prepare("UPDATE part_groups SET completed=completed+?,status=CASE WHEN completed+?=quantity AND NOT EXISTS(SELECT 1 FROM part_groups c WHERE c.parent_group_id=part_groups.id AND c.status<>'closed') THEN 'closed' ELSE 'open' END,closed_at=CASE WHEN completed+?=quantity THEN datetime('now') ELSE NULL END WHERE id=? AND completed+?<=quantity");
+  $s->execute([$good,$good,$good,$current,$good]);
+  if($s->rowCount()!==1)throw new DomainException('Количество годных превышает план группы '.$g['id']);
+  $current=(int)($g['parent_group_id']??0);
+ }
 }
 function perform(string $action): void {
  $pdo=db();
@@ -119,6 +134,36 @@ function perform(string $action): void {
   if(!empty($_POST['route_id'])){route_group($pdo);return;}
   $pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity) VALUES(?,?,?,?)')->execute([required('name'),dateField('received_at'),dateField('planned_at',true),positive('quantity')]);return;
  }
+ if($action==='group_split'){
+  $group=positive('group_id');$raw=$_POST['allocations']??'';if(!is_string($raw)||strlen($raw)>12000)throw new DomainException('Неверный список подгрупп');
+  $lines=preg_split('/\\R/u',trim($raw));$alloc=[];$sum=0;
+  foreach($lines as $line){if(trim($line)==='')continue;$parts=array_map('trim',explode(',',$line));if(count($parts)!==2||!preg_match('/^[\\p{L}\\p{N}][\\p{L}\\p{N}._-]{0,19}$/u',$parts[0]))throw new DomainException('Формат строки: префикс, количество (например A, 120)');
+   $qty=filter_var($parts[1],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);if($qty===false)throw new DomainException('Количество каждой подгруппы должно быть положительным');
+   $alloc[]=['prefix'=>$parts[0],'quantity'=>$qty];$sum+=$qty;
+  }
+  if(count($alloc)<2)throw new DomainException('Для деления укажите минимум две подгруппы');
+  if(count($alloc)>100)throw new DomainException('За одно деление можно создать не более 100 подгрупп');
+  if(count(array_unique(array_column($alloc,'prefix')))!==count($alloc))throw new DomainException('Префиксы подгрупп должны отличаться');
+  $pdo->exec('BEGIN IMMEDIATE');
+  try{
+   $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
+   if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Эта группа уже разделена. Выберите конечную подгруппу.');
+    $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
+   $available=(int)$g['quantity']-(int)$g['completed']-$reserved;
+   if($available<=0)throw new DomainException('Нет свободных деталей для распределения');
+   if($sum!==$available)throw new DomainException('Распределите ровно '.$available.' свободных деталей. Введено: '.$sum);
+   $steps=query('SELECT * FROM group_steps WHERE group_id=? ORDER BY position',[$group]);
+   if($steps&&first('SELECT e.id FROM work_entries e LEFT JOIN route_operations o ON o.entry_id=e.id WHERE e.group_id=? LIMIT 1',[$group]))throw new DomainException('Для группы с уже начатыми маршрутными этапами деление пока недоступно: сначала завершите текущие операции. Это защищает остатки и историю маршрута от перераспределения дважды.');
+   $insert=$pdo->prepare('INSERT INTO part_groups(name,received_at,planned_at,quantity,parent_group_id,prefix) VALUES(?,?,?,?,?,?)');
+   $copy=$pdo->prepare('INSERT INTO group_steps(group_id,position,name,machines,parents,quota,norm_seconds,instruction) VALUES(?,?,?,?,?,?,?,?)');
+   foreach($alloc as $a){
+    $name=$g['name'].'-'.$a['prefix'];if(first('SELECT id FROM part_groups WHERE name=?',[$name]))throw new DomainException('Группа с названием '.$name.' уже существует');
+    $insert->execute([$name,$g['received_at'],$g['planned_at'],$a['quantity'],$group,$a['prefix']]);$child=(int)$pdo->lastInsertId();
+    foreach($steps as $s)$copy->execute([$child,$s['position'],$s['name'],$s['machines'],$s['parents'],$s['quota'],$s['norm_seconds'],$s['instruction']]);
+   }
+   $pdo->exec('COMMIT');$_SESSION['success']='Группа разделена на '.count($alloc).' подгруппы. Распределено '.$sum.' шт.';return;
+  }catch(Throwable $e){try{$pdo->exec('ROLLBACK');}catch(Throwable $x){}throw $e;}
+ }
  if($action==='start'){
   $machine=positive('machine_id');$worker=positive('worker_id');$group=positive('group_id');
   $pdo->exec('BEGIN IMMEDIATE');
@@ -128,6 +173,7 @@ function perform(string $action): void {
    if($busy)throw new DomainException('Станок уже в работе (операция №'.$busy['id'].', работник: '.($busy['worker']??'неизвестен').'). Сначала завершите предыдущую операцию.');
    $g=first('SELECT * FROM part_groups WHERE id=?',[$group]);
    if(!$g||$g['status']!=='open')throw new DomainException('Группа закрыта или не найдена');
+   if(first('SELECT id FROM part_groups WHERE parent_group_id=? LIMIT 1',[$group]))throw new DomainException('Группа разделена. Выберите конечную подгруппу.');
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');
    $n=(int)(first('SELECT MAX(part_number+quantity-1) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
    $qty=positive('batch_quantity');
@@ -171,10 +217,7 @@ function perform(string $action): void {
    $finish->execute([$finalStatus,$quality,$reason,$good,$scrap,$rework,$id]);
    if($finish->rowCount()!==1)throw new DomainException('Не удалось завершить операцию: запись не обновлена');
    if($good>0){
-    $s=$pdo->prepare("UPDATE part_groups SET completed=completed+? WHERE id=? AND status='open' AND completed+?<=quantity");
-    $s->execute([$good,$entry['group_id'],$good]);
-    if($s->rowCount()!==1)throw new DomainException('Группа закрыта или количество готовых превышает план');
-    $pdo->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);
+    credit_group($pdo,(int)$entry['group_id'],$good);
    }
    // A legacy SQLite trigger may delete or alter the row on UPDATE.
    // Check before commit, so a disappearing operation rolls back completely.

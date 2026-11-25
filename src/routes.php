@@ -69,6 +69,7 @@ function route_finish(PDO $p,array $entry): bool {
 function route_graph_balances(int $group,array $steps): array {
  $g=first('SELECT quantity FROM part_groups WHERE id=?',[$group]);$pool=[0=>(int)$g['quantity']];foreach($steps as $s){$pos=(int)$s['position'];$pool[$pos]=(int)$s['good'];$pool[-$pos]=(int)$s['rework'];}
  foreach(query('SELECT i.source_position,SUM(i.quantity) used FROM route_inputs i JOIN work_entries e ON e.id=i.entry_id WHERE e.group_id=? GROUP BY i.source_position',[$group]) as $u)$pool[(int)$u['source_position']]-=(int)$u['used'];
+ foreach(query('SELECT s.position,SUM(a.quantity) used FROM route_operation_allocations a JOIN group_steps s ON s.id=a.step_id WHERE a.group_id=? GROUP BY s.position',[$group]) as $u)$pool[(int)$u['position']-1]-=(int)$u['used'];
  foreach($steps as &$s){$pos=(int)$s['position'];$sources=[-$pos,...json_decode($s['parents'],true)];$s['sources']=[];foreach($sources as $source)$s['sources'][$source]=max(0,$pool[$source]??0);$s['available']=array_sum($s['sources']);if((int)$s['quota']>0)$s['available']=min($s['available'],max(0,(int)$s['quota']-(int)$s['good']-(int)$s['scrap']-(int)$s['reserved']));}unset($s);return $steps;
 }
 function route_archive(PDO $p): void {$p->prepare('UPDATE routes SET archived=1 WHERE id=?')->execute([positive('route_id')]);}

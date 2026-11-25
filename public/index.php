@@ -30,12 +30,12 @@ try {
   if (in_array($requestedAction,['machine','worker','group','directory_delete','directory_restore','route_create','route_archive','save_settings'],true)) admin_require();
   perform($requestedAction);
   $_SESSION['success']=$_SESSION['success']??'Изменения сохранены';
-  $target=in_array($_POST['back']??'',['work','groups','directory','routes'],true)?$_POST['back']:'work';
+  $target=in_array($_POST['back']??'',['work','groups','directory','routes','settings'],true)?$_POST['back']:'work';
   header('Location: ?page='.$target,true,303);exit;
  }
 }catch(Throwable $e){$error=$e instanceof DomainException?$e->getMessage():'Ошибка базы данных или дублирующийся код: '.$e->getMessage();}
 $page=(string)($_GET['page']??'work');
-if(!in_array($page,['work','groups','directory','reports','routes'],true))$page='work';
+if(!in_array($page,['work','groups','directory','reports','routes','settings'],true))$page='work';
 $machines=query('SELECT * FROM machines WHERE active=1 ORDER BY name');
 $workers=query('SELECT * FROM workers WHERE active=1 ORDER BY name');
 $archivedMachines=$page==='directory'?query('SELECT * FROM machines WHERE active=0 ORDER BY name'):[];
@@ -113,7 +113,7 @@ $days=query("SELECT substr(started_at,1,10) day,COUNT(*) total,COALESCE(SUM(stat
 <?php endif;?></main>
 <script type="application/json" id="finish-scan-setting"><?=json_encode(app_setting('finish_worker_scan','1')!=='0')?></script><div id="finish-modal" class="modal" hidden><div class="modal-body finish-dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="finish-title">
 <h2 id="finish-title">Подтвердить завершение работы</h2>
-<p>Отсканируйте код <strong>того же работника</strong>, который начал операцию:</p>
+<p><?=app_setting('finish_worker_scan','1')!=='0'?'Отсканируйте код того же работника, который начал операцию:':'Повторное сканирование работника отключено в настройках.'?></p>
 <div class="finish-identity"><span>Работник</span><strong id="finish-worker-name"></strong></div>
 <p id="finish-status" role="status" aria-live="polite"><?=app_setting('finish_worker_scan','1')!=='0'?'Ожидаю повторное сканирование QR-кода работника.':'Повторное сканирование отключено настройками администратора.'?></p>
 <form method="post" id="finish-form"><input type="hidden" name="csrf" value="<?=h($csrf)?>"><input type="hidden" name="action" value="finish"><input type="hidden" name="back" value="work"><input type="hidden" name="entry_id" id="finish-entry-id"><input type="hidden" name="worker_code" id="finish-worker-code">

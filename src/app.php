@@ -129,13 +129,13 @@ function perform(string $action): void {
    if(first("SELECT id FROM work_entries WHERE worker_id=? AND status='active'",[$worker]))throw new DomainException('Работник уже выполняет операцию');
    $n=(int)(first('SELECT MAX(part_number+quantity-1) n FROM work_entries WHERE group_id=?',[$group])['n']??0)+1;
    $qty=positive('batch_quantity');
+   if(route_steps($group)){route_start($pdo,$group,$machine,$worker,$n);$pdo->exec('COMMIT');return;}
    $reserved=(int)(first("SELECT COALESCE(SUM(quantity),0) n FROM work_entries WHERE group_id=? AND status='active'",[$group])['n']??0);
    $remaining=(int)$g['quantity']-(int)$g['completed']-$reserved;
    if($qty>$remaining)throw new DomainException('Доступно для запуска: '.$remaining.' шт.');
    $rework=(int)($_POST['rework_of']??0);
    if($rework && $qty!==1)throw new DomainException('Повторная обработка одной детали запускается отдельно');
    if($rework && !first("SELECT id FROM work_entries e WHERE id=? AND group_id=? AND status='cancelled' AND quality_result='rework' AND NOT EXISTS(SELECT 1 FROM work_entries r WHERE r.rework_of=e.id)",[$rework,$group]))throw new DomainException('Доработка недоступна или уже начата');
-   if(route_steps($group)){route_start($pdo,$group,$machine,$worker,$n);$pdo->exec('COMMIT');return;}
    $pdo->prepare("INSERT INTO work_entries(machine_id,worker_id,group_id,part_number,started_at,rework_of,quantity) VALUES(?,?,?,?,datetime('now'),?,?)")->execute([$machine,$worker,$group,$n,$rework?:null,$qty]);
    $pdo->exec('COMMIT');return;
   }catch(Throwable $e){try {$pdo->exec('ROLLBACK');}catch(Throwable $rollbackError){error_log('SQLite rollback failed: '.$rollbackError->getMessage());}throw $e;}

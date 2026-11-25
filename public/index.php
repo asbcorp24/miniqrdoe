@@ -27,7 +27,7 @@ try {
  if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!hash_equals(token(),(string)($_POST['csrf']??'')))throw new DomainException('Сессия устарела: перезагрузите страницу');
   $requestedAction=(string)($_POST['action']??'');
-  if (in_array($requestedAction,['machine','worker','group','directory_delete','directory_restore','route_create','route_archive','save_settings'],true)) admin_require();
+  if (in_array($requestedAction,['machine','worker','group','group_split','directory_delete','directory_restore','route_create','route_archive','save_settings'],true)) admin_require();
   perform($requestedAction);
   $_SESSION['success']=$_SESSION['success']??'Изменения сохранены';
   $target=in_array($_POST['back']??'',['work','groups','directory','routes','settings'],true)?$_POST['back']:'work';

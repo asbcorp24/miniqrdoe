@@ -55,8 +55,7 @@ function route_finish(PDO $p,array $entry): bool {
  if(!first("SELECT id FROM work_entries WHERE id=? AND status='done'",[$entry['id']]))throw new DomainException('Операция не сохранена');
  $steps=route_steps((int)$entry['group_id']);$terminal=true;if($steps[0]['parents']!==null){foreach($steps as $s)if(in_array((int)$o['position'],json_decode($s['parents'],true),true))$terminal=false;}else $terminal=!first('SELECT id FROM group_steps WHERE group_id=? AND position>?',[$entry['group_id'],$o['position']]);
  if($terminal){
- $p->prepare('UPDATE part_groups SET completed=completed+? WHERE id=?')->execute([$good,$entry['group_id']]);
- $p->prepare("UPDATE part_groups SET status='closed',closed_at=datetime('now') WHERE id=? AND completed=quantity")->execute([$entry['group_id']]);}
+ credit_group($p,(int)$entry['group_id'],$good);}
  return true;
 }
 
